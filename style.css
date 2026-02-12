@@ -1,0 +1,220 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap");
+
+/* Base Styles */
+body {
+  background-color: #0f172a; /* slate-900 */
+  color: #f1f5f9; /* slate-100 */
+  font-family: "Outfit", sans-serif;
+}
+
+/* Custom Animations */
+
+/* Screen Shake - for Chaos Strike hits */
+@keyframes shake {
+  0% {
+    transform: translate(1px, 1px) rotate(0deg);
+  }
+  10% {
+    transform: translate(-1px, -2px) rotate(-1deg);
+  }
+  20% {
+    transform: translate(-3px, 0px) rotate(1deg);
+  }
+  30% {
+    transform: translate(3px, 2px) rotate(0deg);
+  }
+  40% {
+    transform: translate(1px, -1px) rotate(1deg);
+  }
+  50% {
+    transform: translate(-1px, 2px) rotate(-1deg);
+  }
+  60% {
+    transform: translate(-3px, 1px) rotate(0deg);
+  }
+  70% {
+    transform: translate(3px, 1px) rotate(-1deg);
+  }
+  80% {
+    transform: translate(-1px, -1px) rotate(1deg);
+  }
+  90% {
+    transform: translate(1px, 2px) rotate(0deg);
+  }
+  100% {
+    transform: translate(1px, -2px) rotate(-1deg);
+  }
+}
+
+.screen-shake {
+  animation: shake 0.5s;
+  animation-iteration-count: 1;
+}
+
+/* Attack Jump - Character portrait jumps at defender */
+@keyframes jump-right {
+  0% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(50px) scale(1.1);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes jump-left {
+  0% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-50px) scale(1.1);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.attack-jump-right {
+  animation: jump-right 0.3s ease-in-out;
+}
+
+.attack-jump-left {
+    animation: jump-left 0.3s ease-in-out;
+}
+
+/* Hit Reactions */
+@keyframes recoil-right {
+    0% { transform: translateX(0); }
+    20% { transform: translateX(20px) skewX(-5deg); filter: brightness(2); }
+    40% { transform: translateX(10px); }
+    100% { transform: translateX(0); filter: brightness(1); }
+}
+
+@keyframes recoil-left {
+    0% { transform: translateX(0); }
+    20% { transform: translateX(-20px) skewX(5deg); filter: brightness(2); }
+    40% { transform: translateX(-10px); }
+    100% { transform: translateX(0); filter: brightness(1); }
+}
+
+.hit-recoil-right {
+    animation: recoil-right 0.4s ease-out;
+}
+
+.hit-recoil-left {
+    animation: recoil-left 0.4s ease-out;
+}
+
+/* Particle Effects */
+.particle {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 50%;
+    animation: fade-out 1s forwards;
+}
+
+@keyframes fade-out {
+    0% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(3); }
+}
+
+.particle-chaos {
+    background: radial-gradient(circle, #f87171, #991b1b);
+    box-shadow: 0 0 10px #ef4444;
+}
+
+.particle-vampire {
+    background: radial-gradient(circle, #a78bfa, #5b21b6);
+    box-shadow: 0 0 10px #8b5cf6;
+}
+
+.particle-stun {
+    background: radial-gradient(circle, #67e8f9, #0e7490);
+    box-shadow: 0 0 10px #06b6d4;
+}
+
+.particle-heal {
+    background: radial-gradient(circle, #4ade80, #166534);
+    box-shadow: 0 0 10px #22c55e;
+}
+
+/* Floating Heal Numbers */
+@keyframes float-up {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+}
+
+.heal-float {
+  position: absolute;
+  color: #4ade80; /* emerald-400 */
+  font-weight: bold;
+  font-size: 1.5rem;
+  pointer-events: none;
+  animation: float-up 1s ease-out forwards;
+}
+
+.damage-float {
+  position: absolute;
+  color: #f87171; /* red-400 */
+  font-weight: bold;
+  font-size: 1.5rem;
+  pointer-events: none;
+  animation: float-up 1s ease-out forwards;
+}
+
+/* Stat Flicker - Rapid number cycling */
+.stat-flicker {
+  color: #fca5a5; /* red-300 - or any chaotic color */
+}
+
+/* Freeze Tint - for Stun Lock effect */
+.freeze-tint {
+  filter: sepia(100%) hue-rotate(190deg) saturate(500%);
+  transition: filter 0.3s ease;
+}
+
+/* Active Turn Indicator */
+.active-turn {
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.5); /* cyan glow */
+  border-color: #06b6d4;
+  transform: scale(1.02);
+}
+
+/* HP Bar Smooth Transition */
+.hp-bar-fill {
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom Scrollbar for Battle Log */
+#battle-log::-webkit-scrollbar {
+  width: 8px;
+}
+
+#battle-log::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+#battle-log::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+#battle-log::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Archetype Button Active State */
+.active-arch {
+  background-color: #0891b2 !important; /* cyan-600 */
+  color: white;
+  font-weight: bold;
+  box-shadow: 0 0 10px rgba(8, 145, 178, 0.4);
+}

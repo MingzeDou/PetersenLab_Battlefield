@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PetersenLab Battlefield</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="bg-slate-900 text-slate-100 font-['Outfit'] overflow-x-hidden relative">
+    <!-- Particle Container -->
+    <div id="particles" class="fixed inset-0 pointer-events-none z-40 overflow-hidden"></div>
+    <!-- Header -->
+    <header
+      class="p-4 border-b border-slate-700 bg-slate-800/50 backdrop-blur-md sticky top-0 z-50"
+    >
+      <div class="max-w-7xl mx-auto flex justify-between items-center">
+        <h1 class="text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
+            PETERSENLAB BATTLEFIELD
+        </h1>
+        <div class="flex gap-2">
+            <button id="barracks-btn" class="text-sm font-bold bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-full transition-colors">
+                Barracks 🏛️
+            </button>
+            <button id="online-btn" class="text-sm font-bold bg-blue-700 hover:bg-blue-600 px-4 py-2 rounded-full transition-colors">
+                Room 1v1 🌐
+            </button>
+            <button id="share-btn" class="hidden text-sm font-bold bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-full transition-colors">
+                Share Build 🔗
+            </button>
+        </div>
+    </div>
+</header>
+
+    <!-- BARRACKS MODAL -->
+    <div id="barracks-modal" class="hidden fixed inset-0 bg-slate-900/90 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-2xl p-6 relative">
+            <button onclick="document.getElementById('barracks-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
+            <h2 class="text-2xl font-bold mb-4 text-cyan-400">HERO BARRACKS</h2>
+            <div id="barracks-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto mb-4">
+                <!-- Character Cards Injected Here -->
+                <p class="text-slate-500 italic col-span-2 text-center">No heroes saved yet.</p>
+            </div>
+            <div class="border-t border-slate-700 pt-4 flex justify-between items-center text-sm text-slate-400">
+                <span>Save current Player 1 to Barracks?</span>
+                <button id="save-p1-btn" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold">Save P1</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ONLINE MODAL -->
+    <div id="online-modal" class="hidden fixed inset-0 bg-slate-900/90 z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-6 relative">
+            <button onclick="document.getElementById('online-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
+            <h2 class="text-2xl font-bold mb-2 text-blue-400">ONLINE 1V1 BATTLE</h2>
+            <p class="text-xs text-slate-400 mb-6">Format: Online only, 1v1, Free-Held</p>
+            
+            <div class="space-y-6">
+                <!-- Host Section -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                    <h3 class="font-bold text-lg mb-2">Host Game</h3>
+                    <p class="text-xs text-slate-400 mb-3">Create a room and send the link to a friend.</p>
+                    <button id="host-game-btn" class="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded-lg font-bold transition-colors">Create Room</button>
+                    <div id="host-link-area" class="hidden mt-3">
+                        <input type="text" id="host-link-input" readonly class="w-full bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs mb-2">
+                        <button id="copy-invite-btn" class="w-full bg-emerald-600 hover:bg-emerald-500 py-2 rounded-lg font-bold text-sm transition-colors mb-2">Copy Invite Link</button>
+                        <p class="text-xs text-emerald-400 animate-pulse">Waiting for opponent...</p>
+                    </div>
+                </div>
+
+                <div class="relative flex items-center justify-center">
+                    <hr class="w-full border-slate-700">
+                    <span class="absolute bg-slate-800 px-2 text-slate-500 text-sm">OR</span>
+                </div>
+
+                <!-- Join Section -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                    <h3 class="font-bold text-lg mb-2">Join Game</h3>
+                    <div class="flex gap-2">
+                        <input type="text" id="join-id-input" placeholder="Enter Room ID" class="flex-grow bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none">
+                        <button id="join-game-btn" class="bg-slate-700 hover:bg-slate-600 px-4 rounded-lg font-bold">Join</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREATOR SCREEN -->
+    <main id="creator-screen" class="max-w-7xl mx-auto p-4 md:p-8">
+      <div class="text-center mb-10 space-y-2">
+        <h2 class="text-4xl md:text-5xl font-black">FORGE YOUR DESTINY</h2>
+        <p class="text-slate-400">
+          Assign 100 points. Choose your archetype. Connect online for 1v1 free-held.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+        <!-- Player 1 Creator -->
+        <div
+          id="p1-creator-card"
+          class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 relative overflow-hidden group"
+        >
+          <div
+            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-500"
+          ></div>
+          <h3 class="text-xl font-bold mb-6 text-cyan-400">PLAYER 1</h3>
+
+          <!-- Identity -->
+          <div class="flex gap-4 mb-6">
+            <div class="relative w-24 h-24 flex-shrink-0">
+              <div
+                class="w-full h-full rounded-full border-4 border-slate-600 overflow-hidden bg-slate-900 flex items-center justify-center cursor-pointer hover:border-cyan-400 transition-colors"
+                onclick="document.getElementById('p1-upload').click()"
+              >
+                <img
+                  id="p1-preview"
+                  src=""
+                  class="w-full h-full object-cover hidden"
+                />
+                <span
+                  id="p1-upload-text"
+                  class="text-xs text-slate-500 text-center px-1"
+                  >Upload Photo</span
+                >
+              </div>
+              <input
+                type="file"
+                id="p1-upload"
+                class="hidden"
+                accept="image/*"
+              />
+            </div>
+            <div class="flex-grow space-y-3">
+              <input
+                type="text"
+                id="p1-name"
+                placeholder="Character Name"
+                class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 focus:border-cyan-400 focus:outline-none transition-colors"
+              />
+              <div class="flex gap-2">
+                <button
+                  class="archetype-btn p1-arch flex-1 py-1 text-sm bg-slate-700 rounded hover:bg-slate-600 active-arch"
+                  data-player="1"
+                  data-type="Titan"
+                >
+                  Titan
+                </button>
+                <button
+                  class="archetype-btn p1-arch flex-1 py-1 text-sm bg-slate-700 rounded hover:bg-slate-600"
+                  data-player="1"
+                  data-type="Ghost"
+                >
+                  Ghost
+                </button>
+                <button
+                  class="archetype-btn p1-arch flex-1 py-1 text-sm bg-slate-700 rounded hover:bg-slate-600"
+                  data-player="1"
+                  data-type="Maverick"
+                >
+                  Maverick
+                </button>
+              </div>
+              <div class="text-xs text-slate-400 p1-arch-desc">
+                Titan: High HP, Low Speed, High Variance
+              </div>
+            </div>
+          </div>
+
+          <!-- Skills -->
+          <div class="space-y-4">
+            <div
+              class="flex justify-between items-center text-sm font-bold text-slate-300"
+            >
+              <span>SKILL ALLOCATION</span>
+              <span id="p1-points" class="text-emerald-400">100 remaining</span>
+            </div>
+
+            <!-- Skill 1 -->
+            <div
+              class="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50"
+            >
+              <div class="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  id="p1-s1-name"
+                  placeholder="Skill 1 Name"
+                  class="flex-grow bg-transparent border-b border-slate-700 focus:border-cyan-400 outline-none text-sm px-1 pb-1"
+                />
+                <select
+                  id="p1-s1-type"
+                  class="bg-slate-800 text-xs rounded px-2 py-1 outline-none border border-slate-700"
+                >
+                  <option value="chaos">Chaos Strike</option>
+                  <option value="vampire">Vampire Soul</option>
+                  <option value="stun">Stun Lock</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  id="p1-s1-points"
+                  min="0"
+                  max="100"
+                  value="0"
+                  class="flex-grow h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                />
+                <span id="p1-s1-val" class="w-8 text-right font-mono text-sm"
+                  >0</span
+                >
+              </div>
+            </div>
+
+            <!-- Skill 2 -->
+            <div
+              class="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50"
+            >
+              <div class="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  id="p1-s2-name"
+                  placeholder="Skill 2 Name"
+                  class="flex-grow bg-transparent border-b border-slate-700 focus:border-cyan-400 outline-none text-sm px-1 pb-1"
+                />
+                <select
+                  id="p1-s2-type"
+                  class="bg-slate-800 text-xs rounded px-2 py-1 outline-none border border-slate-700"
+                >
+                  <option value="vampire">Vampire Soul</option>
+                  <option value="chaos">Chaos Strike</option>
+                  <option value="stun">Stun Lock</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  id="p1-s2-points"
+                  min="0"
+                  max="100"
+                  value="0"
+                  class="flex-grow h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                />
+                <span id="p1-s2-val" class="w-8 text-right font-mono text-sm"
+                  >0</span
+                >
+              </div>
+            </div>
+
+            <!-- Skill 3 -->
+            <div
+              class="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50"
+            >
+              <div class="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  id="p1-s3-name"
+                  placeholder="Skill 3 Name"
+                  class="flex-grow bg-transparent border-b border-slate-700 focus:border-cyan-400 outline-none text-sm px-1 pb-1"
+                />
+                <select
+                  id="p1-s3-type"
+                  class="bg-slate-800 text-xs rounded px-2 py-1 outline-none border border-slate-700"
+                >
+                  <option value="stun">Stun Lock</option>
+                  <option value="chaos">Chaos Strike</option>
+                  <option value="vampire">Vampire Soul</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  id="p1-s3-points"
+                  min="0"
+                  max="100"
+                  value="0"
+                  class="flex-grow h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                />
+                <span id="p1-s3-val" class="w-8 text-right font-mono text-sm"
+                  >0</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player 2 Creator -->
+        <div
+          id="p2-creator-card"
+          class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 relative overflow-hidden group"
+        >
+          <div
+            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500"
+          ></div>
+          <h3 class="text-xl font-bold mb-2 text-purple-400">PLAYER 2 (OPPONENT)</h3>
+          <p id="p2-remote-note" class="text-xs text-slate-400 mb-4">This slot is filled automatically when your online opponent connects.</p>
+
+          <!-- Identity -->
+          <div class="flex gap-4 mb-6">
+            <div class="relative w-24 h-24 flex-shrink-0">
+              <div
+                class="w-full h-full rounded-full border-4 border-slate-600 overflow-hidden bg-slate-900 flex items-center justify-center cursor-pointer hover:border-purple-400 transition-colors"
+                onclick="document.getElementById('p2-upload').click()"
+              >
+                <img
+                  id="p2-preview"
+                  src=""
+                  class="w-full h-full object-cover hidden"
+                />
+                <span
+                  id="p2-upload-text"
+                  class="text-xs text-slate-500 text-center px-1"
+                  >Upload Photo</span
+                >
+              </div>
+              <input
+                type="file"
+                id="p2-upload"
+                class="hidden"
+                accept="image/*"
+              />
+            </div>
+            <div class="flex-grow space-y-3">
+              <input
+                type="text"
+                id="p2-name"
+                placeholder="Character Name"
+                class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 focus:border-purple-400 focus:outline-none transition-colors"
+              />
+              <div class="flex gap-2">
+                <button
+                  class="archetype-btn p2-arch flex-1 py-1 text-sm bg-slate-700 rounded hover:bg-slate-600 active-arch"
+                  data-player="2"
+                  data-type="Titan"
+                >
+                  Titan
+                </button>
+                <button
+                  class="archetype-btn p2-arch flex-1 py-1 text-sm bg-slate-700 rounded hover:bg-slate-600"
+                  data-player="2"
+                  data-type="Ghost"
+                >
+                  Ghost
+                </button>
+                <button
+                  class="archetype-btn p2-arch flex-1 py-1 text-sm bg-slate-700 rounded hover:bg-slate-600"
+                  data-player="2"
+                  data-type="Maverick"
+                >
+                  Maverick
+                </button>
+              </div>
+              <div class="text-xs text-slate-400 p2-arch-desc">
+                Titan: High HP, Low Speed, High Variance
+              </div>
+            </div>
+          </div>
+
+          <!-- Skills -->
+          <div class="space-y-4">
+            <div
+              class="flex justify-between items-center text-sm font-bold text-slate-300"
+            >
+              <span>SKILL ALLOCATION</span>
+              <span id="p2-points" class="text-emerald-400">100 remaining</span>
+            </div>
+
+            <!-- Skill 1 -->
+            <div
+              class="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50"
+            >
+              <div class="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  id="p2-s1-name"
+                  placeholder="Skill 1 Name"
+                  class="flex-grow bg-transparent border-b border-slate-700 focus:border-purple-400 outline-none text-sm px-1 pb-1"
+                />
+                <select
+                  id="p2-s1-type"
+                  class="bg-slate-800 text-xs rounded px-2 py-1 outline-none border border-slate-700"
+                >
+                  <option value="chaos">Chaos Strike</option>
+                  <option value="vampire">Vampire Soul</option>
+                  <option value="stun">Stun Lock</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  id="p2-s1-points"
+                  min="0"
+                  max="100"
+                  value="0"
+                  class="flex-grow h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-400"
+                />
+                <span id="p2-s1-val" class="w-8 text-right font-mono text-sm"
+                  >0</span
+                >
+              </div>
+            </div>
+
+            <!-- Skill 2 -->
+            <div
+              class="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50"
+            >
+              <div class="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  id="p2-s2-name"
+                  placeholder="Skill 2 Name"
+                  class="flex-grow bg-transparent border-b border-slate-700 focus:border-purple-400 outline-none text-sm px-1 pb-1"
+                />
+                <select
+                  id="p2-s2-type"
+                  class="bg-slate-800 text-xs rounded px-2 py-1 outline-none border border-slate-700"
+                >
+                  <option value="vampire">Vampire Soul</option>
+                  <option value="chaos">Chaos Strike</option>
+                  <option value="stun">Stun Lock</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  id="p2-s2-points"
+                  min="0"
+                  max="100"
+                  value="0"
+                  class="flex-grow h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-400"
+                />
+                <span id="p2-s2-val" class="w-8 text-right font-mono text-sm"
+                  >0</span
+                >
+              </div>
+            </div>
+
+            <!-- Skill 3 -->
+            <div
+              class="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50"
+            >
+              <div class="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  id="p2-s3-name"
+                  placeholder="Skill 3 Name"
+                  class="flex-grow bg-transparent border-b border-slate-700 focus:border-purple-400 outline-none text-sm px-1 pb-1"
+                />
+                <select
+                  id="p2-s3-type"
+                  class="bg-slate-800 text-xs rounded px-2 py-1 outline-none border border-slate-700"
+                >
+                  <option value="stun">Stun Lock</option>
+                  <option value="chaos">Chaos Strike</option>
+                  <option value="vampire">Vampire Soul</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  id="p2-s3-points"
+                  min="0"
+                  max="100"
+                  value="0"
+                  class="flex-grow h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-400"
+                />
+                <span id="p2-s3-val" class="w-8 text-right font-mono text-sm"
+                  >0</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-center">
+        <button
+          id="start-battle-btn"
+          disabled
+          class="bg-gradient-to-r from-cyan-600 to-purple-600 text-white font-black text-2xl px-12 py-4 rounded-full shadow-lg shadow-cyan-500/20 opacity-50 cursor-not-allowed transition-all transform hover:scale-105 hover:shadow-cyan-500/40"
+        >
+          START ONLINE BATTLE
+        </button>
+        <p
+          id="validation-msg"
+          class="text-red-400 mt-4 h-6 text-sm font-bold"
+        ></p>
+      </div>
+    </main>
+
+    <!-- ARENA SCREEN -->
+    <main
+      id="arena-screen"
+      class="hidden max-w-7xl mx-auto p-4 md:p-8 h-[calc(100vh-80px)] flex flex-col"
+    >
+      <!-- Battle Visualization -->
+      <div
+        class="flex-grow flex items-center justify-between gap-4 md:gap-12 relative mb-6"
+      >
+        <!-- VS Badge -->
+        <div
+          class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10"
+        >
+          <div
+            class="bg-slate-900 border-4 border-slate-700 rounded-full w-16 h-16 md:w-24 md:h-24 flex items-center justify-center shadow-2xl"
+          >
+            <span
+              class="font-black text-2xl md:text-4xl text-transparent bg-clip-text bg-gradient-to-br from-red-500 to-orange-500"
+              >VS</span
+            >
+          </div>
+        </div>
+
+        <!-- Player 1 Card -->
+        <div
+          id="p1-card"
+          class="flex-1 bg-slate-800/80 rounded-2xl p-4 md:p-6 border border-slate-700 shadow-xl transition-all duration-300 relative"
+        >
+          <div class="flex flex-col items-center">
+            <div class="relative mb-4">
+              <img
+                id="p1-arena-img"
+                src=""
+                class="w-24 h-24 md:w-40 md:h-40 rounded-full border-4 border-cyan-500 object-cover shadow-lg shadow-cyan-500/20"
+              />
+              <div
+                id="p1-freeze-overlay"
+                class="hidden absolute inset-0 bg-blue-500/50 rounded-full animate-pulse"
+              ></div>
+            </div>
+            <h2
+              id="p1-arena-name"
+              class="text-xl md:text-3xl font-black text-white mb-2 text-center"
+            ></h2>
+            <div
+              class="w-full bg-slate-900 rounded-full h-4 md:h-6 mb-2 overflow-hidden border border-slate-700 relative"
+            >
+              <div
+                id="p1-hp-bar"
+                class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
+                style="width: 100%"
+              ></div>
+              <span
+                id="p1-hp-text"
+                class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white shadow-black drop-shadow-md"
+              ></span>
+            </div>
+            <div class="flex gap-4 text-xs md:text-sm font-mono text-slate-400">
+              <span id="p1-speed-display">SPD: ???</span>
+              <span id="p1-arch-display">ARCH: ???</span>
+            </div>
+          </div>
+          <!-- Damage Floater Container -->
+          <div
+            id="p1-floater-container"
+            class="absolute top-1/4 left-1/2 transform -translate-x-1/2 pointer-events-none"
+          ></div>
+        </div>
+
+        <!-- Player 2 Card -->
+        <div
+          id="p2-card"
+          class="flex-1 bg-slate-800/80 rounded-2xl p-4 md:p-6 border border-slate-700 shadow-xl transition-all duration-300 relative"
+        >
+          <div class="flex flex-col items-center">
+            <div class="relative mb-4">
+              <img
+                id="p2-arena-img"
+                src=""
+                class="w-24 h-24 md:w-40 md:h-40 rounded-full border-4 border-purple-500 object-cover shadow-lg shadow-purple-500/20"
+              />
+              <div
+                id="p2-freeze-overlay"
+                class="hidden absolute inset-0 bg-blue-500/50 rounded-full animate-pulse"
+              ></div>
+            </div>
+            <h2
+              id="p2-arena-name"
+              class="text-xl md:text-3xl font-black text-white mb-2 text-center"
+            ></h2>
+            <div
+              class="w-full bg-slate-900 rounded-full h-4 md:h-6 mb-2 overflow-hidden border border-slate-700 relative"
+            >
+              <div
+                id="p2-hp-bar"
+                class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                style="width: 100%"
+              ></div>
+              <span
+                id="p2-hp-text"
+                class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white shadow-black drop-shadow-md"
+              ></span>
+            </div>
+            <div class="flex gap-4 text-xs md:text-sm font-mono text-slate-400">
+              <span id="p2-speed-display">SPD: ???</span>
+              <span id="p2-arch-display">ARCH: ???</span>
+            </div>
+          </div>
+          <!-- Damage Floater Container -->
+          <div
+            id="p2-floater-container"
+            class="absolute top-1/4 left-1/2 transform -translate-x-1/2 pointer-events-none"
+          ></div>
+        </div>
+      </div>
+
+      <!-- Controls & Log -->
+      <div class="h-1/3 flex flex-col md:flex-row gap-4">
+        <!-- Battle Log -->
+        <div
+          class="md:w-1/3 bg-slate-900/80 rounded-xl p-4 border border-slate-700 overflow-y-auto font-mono text-sm leading-relaxed"
+          id="battle-log"
+        >
+          <div class="text-slate-500 italic">
+            Waiting for battle initialization...
+          </div>
+        </div>
+
+        <!-- Action Menu -->
+        <div
+          class="md:w-2/3 bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col justify-center"
+        >
+          <div
+            id="turn-indicator"
+            class="text-center mb-4 font-bold text-lg text-yellow-400 animate-pulse"
+          >
+            INITIALIZING STATS...
+          </div>
+          <div
+            id="action-buttons"
+            class="grid grid-cols-1 md:grid-cols-3 gap-3"
+          >
+            <!-- Buttons injected via JS -->
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Victory Overlay -->
+    <div
+      id="victory-overlay"
+      class="hidden fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+    >
+      <div
+        class="bg-slate-800 border-2 border-slate-600 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl relative overflow-hidden"
+      >
+        <div
+          class="absolute inset-0 bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none"
+        ></div>
+        <h2 class="text-5xl font-black text-yellow-400 mb-2 drop-shadow-lg">
+          VICTORY
+        </h2>
+        <p id="winner-name" class="text-2xl font-bold text-white mb-8">
+          PLAYER 1 WINS!
+        </p>
+
+        <div class="flex flex-col gap-3">
+          <button
+            onclick="location.reload()"
+            class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            Play Again
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Math Challenge Modal -->
+    <div id="math-modal" class="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-slate-800 p-8 rounded-2xl border-2 border-purple-500 shadow-2xl w-full max-w-lg text-center relative overflow-hidden">
+            <div class="absolute inset-0 bg-purple-500/10 pointer-events-none animate-pulse"></div>
+            <h2 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 mb-2">MATH CHALLENGE!</h2>
+            <p class="text-slate-400 mb-6">Solve fast to seize the initiative!</p>
+            
+            <div id="math-question" class="text-4xl font-bold font-mono text-white mb-8 p-6 bg-slate-900 rounded-xl border border-slate-700">
+                ? + ? = ?
+            </div>
+
+            <div id="math-options" class="grid grid-cols-2 gap-4">
+                <!-- Buttons injected by JS -->
+            </div>
+            
+            <p id="math-status" class="mt-4 text-sm text-yellow-400 font-mono h-5"></p>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>

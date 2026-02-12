@@ -1,0 +1,1207 @@
+/* Game State */
+const state = {
+  players: {
+    1: {
+      name: "",
+      photo: null,
+      archetype: "Titan",
+      stats: { hp: 0, speed: 0, maxHp: 0 },
+      skills: [
+        { name: "", type: "chaos", points: 0 },
+        { name: "", type: "vampire", points: 0 },
+        { name: "", type: "stun", points: 0 },
+      ],
+      frozen: false,
+    },
+    2: {
+      name: "",
+      photo: null,
+      archetype: "Titan",
+      stats: { hp: 0, speed: 0, maxHp: 0 },
+      skills: [
+        { name: "", type: "chaos", points: 0 },
+        { name: "", type: "vampire", points: 0 },
+        { name: "", type: "stun", points: 0 },
+      ],
+      frozen: false,
+    },
+  },
+  turn: 1, // Player ID (1 or 2)
+  battleActive: false,
+  winnerId: null,
+  mode: null, // null | 'host' | 'guest'
+  conn: null,
+  peer: null,
+  mathChallenge: {
+      active: false,
+      correctAnswer: null,
+      answered: false
+  },
+  guestProfileInitialized: false
+};
+
+const ARCHETYPES = {
+  Titan: { hpMean: 120, hpSigma: 25, speedMean: 30, speedSigma: 10 },
+  Ghost: { hpMean: 70, hpSigma: 15, speedMean: 60, speedSigma: 12 },
+  Maverick: { hpMean: 95, hpSigma: 30, speedMean: 45, speedSigma: 18 },
+};
+
+const ACCESS_GATE = {
+  question: "Where was this idea born?",
+  answer: "BRUS",
+};
+
+/* --- Math & Logic --- */
+
+function gaussianRandom(mean, sigma) {
+  let u = 0,
+    v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  return num * sigma + mean;
+}
+
+function clamp(val, min, max) {
+    return Math.min(Math.max(val, min), max);
+}
+
+function setStatus(msg, kind = "info") {
+    const el = document.getElementById("validation-msg");
+    if (!el) return;
+    el.textContent = msg;
+    if (kind === "ok") el.className = "text-emerald-400 mt-4 h-6 text-sm font-bold";
+    else if (kind === "warn") el.className = "text-yellow-400 mt-4 h-6 text-sm font-bold";
+    else el.className = "text-red-400 mt-4 h-6 text-sm font-bold";
+}
+
+function isOnlineReady() {
+    return Boolean(state.mode && state.conn && state.conn.open);
+}
+
+function passAccessGate() {
+    const response = window.prompt(ACCESS_GATE.question, "");
+    if (response === null) {
+        setStatus("Access check canceled.", "warn");
+        return false;
+    }
+    if (response.trim() !== ACCESS_GATE.answer) {
+        setStatus("Access denied: invalid lab key.", "warn");
+        return false;
+    }
+    return true;
+}
+
+function buildInviteLink(hostId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("join", hostId);
+    return url.toString();
+}
+
+function lockOpponentCreatorSlot() {
+    const card = document.getElementById("p2-creator-card");
+    if (!card) return;
+    const controls = card.querySelectorAll("input, select, button");
+    controls.forEach((el) => {
+        el.disabled = true;
+        el.classList.add("opacity-60", "cursor-not-allowed");
+    });
+}
+
+/* --- Math Challenge Logic --- */
+
+function generateMathProblem() {
+    const types = ['add', 'mul', 'alg', 'quad'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    let q = "", a = "", options = [];
+    
+    // Helper to generate distinct wrong answers
+    const getDistractors = (correct, count, range) => {
+        let res = [correct];
+        while(res.length < count + 1) {
+            let n = correct + Math.floor((Math.random() - 0.5) * range);
+            if(n !== correct && !res.includes(n)) res.push(n);
+        }
+        return res.sort(() => Math.random() - 0.5);
+    };
+
+    if (type === 'add') {
+        const x = Math.floor(Math.random() * 50) + 10;
+        const y = Math.floor(Math.random() * 50) + 10;
+        q = `${x} + ${y} = ?`;
+        a = (x + y).toString();
+        options = getDistractors(x+y, 3, 20).map(String);
+    } 
+    else if (type === 'mul') {
+        const x = Math.floor(Math.random() * 12) + 2;
+        const y = Math.floor(Math.random() * 12) + 2;
+        q = `${x} × ${y} = ?`;
+        a = (x * y).toString();
+        options = getDistractors(x*y, 3, 20).map(String);
+    } 
+    else if (type === 'alg') {
+        const x = Math.floor(Math.random() * 10) + 1;
+        const m = Math.floor(Math.random() * 5) + 2;
+        const b = Math.floor(Math.random() * 10) + 1;
+        const c = m * x + b;
+        q = `${m}x + ${b} = ${c}, x = ?`;
+        a = x.toString();
+        options = getDistractors(x, 3, 10).map(String);
+    } 
+    else if (type === 'quad') {
+        // (x - r1)(x - r2) = x^2 - (r1+r2)x + r1*r2 = 0
+        const r1 = Math.floor(Math.random() * 14) - 7; // -7 to 7
+        const r2 = Math.floor(Math.random() * 14) - 7;
+        const b = -(r1 + r2);
+        const c = r1 * r2;
+        
+        // Format: x^2 + bx + c = 0
+        const bStr = b >= 0 ? `+ ${b}x` : `- ${Math.abs(b)}x`;
+        const cStr = c >= 0 ? `+ ${c}` : `- ${Math.abs(c)}`;
+        q = `x² ${bStr} ${cStr} = 0`;
+        
+        // Answer format: "x = r1, x = r2" (sorted)
+        const formatAns = (v1, v2) => {
+            const min = Math.min(v1, v2);
+            const max = Math.max(v1, v2);
+            return `x=${min}, x=${max}`;
+        };
+        
+        a = formatAns(r1, r2);
+        
+        // Distractors
+        options = [a];
+        // Wrong signs
+        if(formatAns(-r1, -r2) !== a) options.push(formatAns(-r1, -r2));
+        // Mixed signs
+        if(formatAns(-r1, r2) !== a) options.push(formatAns(-r1, r2));
+        // Wrong values
+        while(options.length < 4) {
+            let f = formatAns(r1 + Math.floor(Math.random()*4)-2, r2 + Math.floor(Math.random()*4)-2);
+            if(!options.includes(f)) options.push(f);
+        }
+        options.sort(() => Math.random() - 0.5);
+    }
+    
+    return { q, a, options };
+}
+
+function startMathPhase() {
+    state.battleActive = false; // Prevent moves while solving
+    state.mathChallenge.active = true;
+    state.mathChallenge.answered = false;
+    
+    // Only host generates and syncs the same problem to guest.
+    if (state.mode === 'guest') return;
+
+    const problem = generateMathProblem();
+    state.mathChallenge.correctAnswer = problem.a;
+
+    // Send to guest
+    if (state.mode === 'host') {
+        sendData('MATH_START', problem);
+    }
+    
+    renderMathModal(problem);
+}
+
+function renderMathModal(problem) {
+    const modal = document.getElementById('math-modal');
+    modal.classList.remove('hidden');
+    document.getElementById('math-question').textContent = problem.q;
+    
+    const optsDiv = document.getElementById('math-options');
+    optsDiv.innerHTML = '';
+    
+    problem.options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = "bg-slate-700 hover:bg-purple-600 text-white font-bold py-4 rounded-xl text-lg transition-all transform hover:scale-105";
+        btn.textContent = opt;
+        btn.onclick = () => handleMathAnswer(opt, btn);
+        optsDiv.appendChild(btn);
+    });
+    
+    document.getElementById('math-status').textContent = "Solve!";
+}
+
+function handleMathAnswer(ans, btn) {
+    if (state.mathChallenge.answered) return;
+    
+    if (ans === state.mathChallenge.correctAnswer) {
+        state.mathChallenge.answered = true;
+        btn.classList.add('bg-emerald-500');
+        document.getElementById('math-status').textContent = "CORRECT! Seizing initiative...";
+        
+        if (state.mode === 'host') {
+            sendData('MATH_SOLVED', { winner: 1 });
+            resolveMathPhase(1);
+        } else if (state.mode === 'guest') {
+            sendData('MATH_SOLVED', { winner: 2 });
+            // Guest waits for Host to confirm/sync turn
+        }
+
+    } else {
+        // Penalty
+        btn.classList.add('bg-red-500', 'shake');
+        btn.disabled = true;
+        setTimeout(() => btn.classList.remove('bg-red-500', 'shake'), 500);
+    }
+}
+
+function resolveMathPhase(winnerId) {
+    state.mathChallenge.active = false;
+    document.getElementById('math-modal').classList.add('hidden');
+    state.turn = winnerId;
+    
+    // If online host, sync the turn
+    if (state.mode === 'host') {
+        sendData('SYNC_TURN', { turn: state.turn });
+    }
+    
+    state.battleActive = true;
+    log(`Math Validated! ${state.players[winnerId].name} takes the turn!`);
+    updateTurnUI();
+}
+
+/* --- Initialization & UI Setup --- */
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupCreatorUI(1);
+  setupCreatorUI(2);
+  lockOpponentCreatorSlot();
+  checkValidation();
+    
+  // Barracks & Online UI
+  document.getElementById('barracks-btn').addEventListener('click', () => {
+      document.getElementById('barracks-modal').classList.remove('hidden');
+      renderBarracks();
+  });
+  
+  document.getElementById('save-p1-btn').addEventListener("click", () => {
+      saveCharacter(1);
+      renderBarracks();
+  });
+
+  document.getElementById('online-btn').addEventListener('click', () => {
+      document.getElementById('online-modal').classList.remove('hidden');
+  });
+
+  // Online Event Listeners
+  document.getElementById('host-game-btn').addEventListener('click', hostGame);
+  document.getElementById('copy-invite-btn').addEventListener('click', copyInviteLink);
+  document.getElementById('join-game-btn').addEventListener('click', () => {
+      const id = document.getElementById('join-id-input').value;
+      if(id) joinGame(id);
+  });
+
+  // Check for shared build in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has("p1_name")) {
+    loadSharedBuild();
+  }
+  if (urlParams.has("join")) {
+    const hostId = urlParams.get("join");
+    if (hostId) {
+      document.getElementById("join-id-input").value = hostId;
+      document.getElementById("online-modal").classList.remove("hidden");
+      setStatus("Invite link detected. Click Join to connect.", "warn");
+    }
+  }
+
+  document
+    .getElementById("start-battle-btn")
+    .addEventListener("click", startBattle);
+  document.getElementById('share-btn').addEventListener('click', shareBuild);
+  document.getElementById('online-modal').classList.remove('hidden');
+  setStatus("Online only: host or join a room to enable battle.", "warn");
+});
+
+function setupCreatorUI(pid) {
+  // Archetype Selection
+  document.querySelectorAll(`.p${pid}-arch`).forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      // UI Update
+      document
+        .querySelectorAll(`.p${pid}-arch`)
+        .forEach((b) =>
+          b.classList.remove("active-arch", "bg-cyan-600", "text-white"),
+        );
+      e.target.classList.add("active-arch", "bg-cyan-600", "text-white");
+
+      // State Update
+      state.players[pid].archetype = e.target.dataset.type;
+
+      // Description Update
+      const desc = document.querySelector(`.p${pid}-arch-desc`);
+      if (state.players[pid].archetype === "Titan")
+        desc.textContent = "Titan: High HP, Low Speed, High Variance";
+      else if (state.players[pid].archetype === "Ghost")
+        desc.textContent = "Ghost: Low HP, High Speed, Low Variance";
+      else desc.textContent = "Maverick: Balanced Stats, Wild Card";
+
+      checkValidation();
+    });
+  });
+
+  // Photo Upload
+  const fileInput = document.getElementById(`p${pid}-upload`);
+  const preview = document.getElementById(`p${pid}-preview`);
+  const text = document.getElementById(`p${pid}-upload-text`);
+
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        state.players[pid].photo = e.target.result;
+        preview.src = e.target.result;
+        preview.classList.remove("hidden");
+        text.classList.add("hidden");
+        checkValidation();
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // Inputs Parsing
+  [
+    "name",
+    "s1-name",
+    "s1-type",
+    "s1-points",
+    "s2-name",
+    "s2-type",
+    "s2-points",
+    "s3-name",
+    "s3-type",
+    "s3-points",
+  ].forEach((id) => {
+    const el = document.getElementById(`p${pid}-${id}`);
+    el.addEventListener("input", () => {
+      updatePlayerState(pid);
+      checkValidation();
+    });
+  });
+}
+
+function updatePlayerState(pid) {
+  const p = state.players[pid];
+  p.name = document.getElementById(`p${pid}-name`).value;
+
+  let totalPoints = 0;
+  for (let i = 0; i < 3; i++) {
+    const sName = document.getElementById(`p${pid}-s${i + 1}-name`).value;
+    const sType = document.getElementById(`p${pid}-s${i + 1}-type`).value;
+    const sPoints =
+      parseInt(document.getElementById(`p${pid}-s${i + 1}-points`).value) || 0;
+
+    // UI Value Update
+    document.getElementById(`p${pid}-s${i + 1}-val`).textContent = sPoints;
+
+    p.skills[i] = { name: sName, type: sType, points: sPoints };
+    totalPoints += sPoints;
+  }
+
+  // Update Remaining Points UI
+  const pointsRem = 100 - totalPoints;
+  const pointsSpan = document.getElementById(`p${pid}-points`);
+  pointsSpan.textContent = `${pointsRem} remaining`;
+
+  if (pointsRem < 0) pointsSpan.className = "text-red-500 font-bold";
+  else if (pointsRem === 0) pointsSpan.className = "text-emerald-400 font-bold";
+  else pointsSpan.className = "text-yellow-400";
+}
+
+function renderPlayerToCreator(pid) {
+  const p = state.players[pid];
+  document.getElementById(`p${pid}-name`).value = p.name || "";
+  document.getElementById(`p${pid}-preview`).src = p.photo || "";
+  if (p.photo) {
+    document.getElementById(`p${pid}-preview`).classList.remove("hidden");
+    document.getElementById(`p${pid}-upload-text`).classList.add("hidden");
+  } else {
+    document.getElementById(`p${pid}-preview`).classList.add("hidden");
+    document.getElementById(`p${pid}-upload-text`).classList.remove("hidden");
+  }
+
+  document.querySelectorAll(`.p${pid}-arch`).forEach((b) => {
+    const active = b.dataset.type === p.archetype;
+    b.classList.toggle("active-arch", active);
+    b.classList.toggle("bg-cyan-600", active);
+    b.classList.toggle("text-white", active);
+  });
+
+  const desc = document.querySelector(`.p${pid}-arch-desc`);
+  if (p.archetype === "Titan") desc.textContent = "Titan: High HP, Low Speed, High Variance";
+  else if (p.archetype === "Ghost") desc.textContent = "Ghost: Low HP, High Speed, Low Variance";
+  else desc.textContent = "Maverick: Balanced Stats, Wild Card";
+
+  for (let i = 0; i < 3; i++) {
+    document.getElementById(`p${pid}-s${i + 1}-name`).value = p.skills[i].name || "";
+    document.getElementById(`p${pid}-s${i + 1}-type`).value = p.skills[i].type || "chaos";
+    document.getElementById(`p${pid}-s${i + 1}-points`).value = p.skills[i].points || 0;
+    document.getElementById(`p${pid}-s${i + 1}-val`).textContent = p.skills[i].points || 0;
+  }
+  updatePlayerState(pid);
+}
+
+function checkValidation() {
+  let valid = true;
+  let msg = "";
+
+  [1, 2].forEach((pid) => {
+    const p = state.players[pid];
+    let pts = 0;
+    p.skills.forEach((s) => (pts += s.points));
+
+    if (!p.name) {
+      valid = false;
+      msg = `Player ${pid} needs a name.`;
+    } else if (pts !== 100) {
+      valid = false;
+      msg = `Player ${pid} must use exactly 100 points.`;
+    }
+  });
+
+  const btn = document.getElementById("start-battle-btn");
+  if (valid && !state.mode) {
+    valid = false;
+    msg = "Choose Host or Join to enter an online 1v1 room.";
+  } else if (valid && !isOnlineReady()) {
+    valid = false;
+    msg = "Waiting for online connection...";
+  }
+
+  if (valid) {
+    btn.disabled = false;
+    btn.classList.remove("opacity-50", "cursor-not-allowed");
+    btn.classList.add("animate-pulse");
+    setStatus("Ready: online 1v1 free-held mode.", "ok");
+  } else {
+    btn.disabled = true;
+    btn.classList.add("opacity-50", "cursor-not-allowed");
+    btn.classList.remove("animate-pulse");
+    setStatus(msg, "warn");
+  }
+}
+
+/* --- Battle Logic --- */
+
+async function startBattle() {
+  if (!isOnlineReady()) {
+    setStatus("Connect online first (Host or Join) before starting.", "warn");
+    document.getElementById('online-modal').classList.remove('hidden');
+    return;
+  }
+
+  // UI Switch
+  document.getElementById("creator-screen").classList.add("hidden");
+  document.getElementById("arena-screen").classList.remove("hidden");
+  document.getElementById("arena-screen").classList.add("flex");
+
+    // Setup Arena UI
+    for(let i=1; i<=2; i++) {
+        document.getElementById(`p${i}-arena-name`).textContent = state.players[i].name;
+        document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || "https://via.placeholder.com/150";
+    }
+
+    if (state.mode === 'host') {
+        sendData('START_BATTLE', {});
+    }
+
+    log("Initialzing Battle...");
+    await rollStatsAnimation();
+    
+    // Start Math Challenge
+    if (state.mode === 'host') {
+        startMathPhase();
+    } else {
+        log("Waiting for host to start Math Phase...");
+    }
+}
+
+async function rollStatsAnimation() {
+    // If Guest, we wait for stats from Host. We don't roll logic, just animation.
+    if (state.mode === 'guest') {
+        // Animation visuals only
+        const p1Stats = document.getElementById('p1-speed-display');
+        const p2Stats = document.getElementById('p2-speed-display');
+        const p1Hp = document.getElementById('p1-hp-text');
+        const p2Hp = document.getElementById('p2-hp-text');
+        
+        for(let i=0; i<20; i++) {
+            p1Stats.textContent = `SPD: ${Math.floor(Math.random()*100)}`;
+            p2Stats.textContent = `SPD: ${Math.floor(Math.random()*100)}`;
+            p1Hp.textContent = `${Math.floor(Math.random()*200)} HP`;
+            p2Hp.textContent = `${Math.floor(Math.random()*200)} HP`;
+            await new Promise(r => setTimeout(r, 50 + i*10));
+        }
+        return; // Stats set via network sync
+    }
+
+    const p1Stats = document.getElementById('p1-speed-display');
+  const p2Stats = document.getElementById("p2-speed-display");
+  const p1Hp = document.getElementById("p1-hp-text");
+  const p2Hp = document.getElementById("p2-hp-text");
+
+    // Generating Final Stats
+    [1, 2].forEach(id => {
+        const arch = ARCHETYPES[state.players[id].archetype];
+        
+        let health = Math.floor(gaussianRandom(arch.hpMean, arch.hpSigma));
+        if (health < 10) health = 10;
+        
+        let speed = Math.floor(gaussianRandom(arch.speedMean, arch.speedSigma));
+        if (speed < 5) speed = 5;
+
+        state.players[id].stats = { hp: health, maxHp: health, speed: speed };
+    });
+
+    if (state.mode === 'host') {
+        sendData('SYNC_STATS', { 
+            p1: state.players[1].stats, 
+            p2: state.players[2].stats 
+        });
+    }
+
+    // Animation Loop
+  for (let i = 0; i < 20; i++) {
+    p1Stats.textContent = `SPD: ${Math.floor(Math.random() * 100)}`;
+    p2Stats.textContent = `SPD: ${Math.floor(Math.random() * 100)}`;
+    p1Hp.textContent = `${Math.floor(Math.random() * 200)} HP`;
+    p2Hp.textContent = `${Math.floor(Math.random() * 200)} HP`;
+    await new Promise((r) => setTimeout(r, 50 + i * 10));
+  }
+
+  // Final Set
+  for (let i = 1; i <= 2; i++) {
+    const p = state.players[i];
+    document.getElementById(`p${i}-speed-display`).textContent =
+      `SPD: ${p.stats.speed}`;
+    document.getElementById(`p${i}-hp-text`).textContent =
+      `${p.stats.hp} / ${p.stats.maxHp} HP`;
+    document.getElementById(`p${i}-arch-display`).textContent =
+      `ARCH: ${p.archetype}`;
+  }
+}
+
+function updateTurnUI() {
+  const active = state.turn;
+  const passive = active === 1 ? 2 : 1;
+
+  // Visual Indicators
+  document
+    .getElementById(`p${active}-card`)
+    .classList.add(
+      "border-cyan-400",
+      "shadow-cyan-500/50",
+      "transform",
+      "scale-105",
+    );
+  document
+    .getElementById(`p${passive}-card`)
+    .classList.remove(
+      "border-cyan-400",
+      "shadow-cyan-500/50",
+      "transform",
+      "scale-105",
+    );
+
+  const turnIndicator = document.getElementById("turn-indicator");
+  turnIndicator.textContent = `${state.players[active].name}'s TURN`;
+
+  // Action Buttons
+  const btnContainer = document.getElementById("action-buttons");
+  btnContainer.innerHTML = "";
+
+  if (state.players[active].frozen) {
+    log(`${state.players[active].name} is FROZEN and skips their turn!`);
+    state.players[active].frozen = false;
+    document
+      .getElementById(`p${active}-freeze-overlay`)
+      .classList.add("hidden");
+    setTimeout(() => {
+      endTurn();
+    }, 1500);
+    return;
+  }
+
+  state.players[active].skills.forEach((skill, idx) => {
+    const btn = document.createElement("button");
+
+    // Style based on type
+    let bgClass = "bg-slate-700 hover:bg-slate-600";
+    if (skill.type === "chaos")
+      bgClass =
+        "bg-red-900/50 hover:bg-red-700/50 border border-red-500/30 text-red-100";
+    if (skill.type === "vampire")
+      bgClass =
+        "bg-purple-900/50 hover:bg-purple-700/50 border border-purple-500/30 text-purple-100";
+    if (skill.type === "stun")
+      bgClass =
+        "bg-blue-900/50 hover:bg-blue-700/50 border border-blue-500/30 text-blue-100";
+
+    btn.className = `${bgClass} py-3 px-2 rounded-lg font-bold transition-all text-sm flex flex-col items-center gap-1`;
+    btn.innerHTML = `
+            <span class="text-xs opacity-70 tracking-wider uppercase">${skill.type}</span>
+            <span class="text-base">${skill.name || "Unnamed Skill"}</span>
+            <span class="text-xs bg-black/30 px-2 rounded-full">${skill.points} pts</span>
+        `;
+
+    btn.onclick = () => executeMove(skill);
+    btnContainer.appendChild(btn);
+  });
+}
+
+async function executeMove(skill, fromNetwork = false) {
+    if (!state.battleActive) return;
+
+    // Online Check: If it's not my turn and I clicked (not from network), ignore
+    if (state.mode === 'host' && state.turn === 2 && !fromNetwork) return;
+    if (state.mode === 'guest' && state.turn === 1 && !fromNetwork) return;
+
+    // Send Move if local interaction in online mode
+    if (!fromNetwork) {
+        if (state.mode === 'host' || state.mode === 'guest') {
+            sendData('MOVE', { skill });
+            // If Guest, we stop here and wait for Host to calculate result and send back
+            // If Host, we proceed to calculate logic
+            if (state.mode === 'guest') {
+                // Visual feedback only, real logic comes from Host sync
+                document.getElementById('action-buttons').innerHTML = ''; 
+                return;
+            }
+        }
+    }
+    
+    // Disable buttons
+    document.getElementById('action-buttons').innerHTML = '';
+
+    const attackerId = state.turn;
+  const defenderId = attackerId === 1 ? 2 : 1;
+  const attacker = state.players[attackerId];
+  const defender = state.players[defenderId];
+
+  // Jump Animation
+  const jumpClass = attackerId === 1 ? "attack-jump-right" : "attack-jump-left";
+  document.getElementById(`p${attackerId}-arena-img`).classList.add(jumpClass);
+  setTimeout(
+    () =>
+      document
+        .getElementById(`p${attackerId}-arena-img`)
+        .classList.remove(jumpClass),
+    500,
+  );
+
+  log(`${attacker.name} uses ${skill.name}!`);
+  await new Promise((r) => setTimeout(r, 600));
+
+  // Accuracy Check
+  let accuracy = 100;
+  if (skill.type === "chaos") accuracy = 70;
+  if (skill.type === "stun") accuracy = 85;
+  if (skill.type === "vampire") accuracy = 95;
+
+  if (Math.random() * 100 > accuracy) {
+    log(`...but it MISSED!`);
+    endTurn();
+    return;
+  }
+
+  // Damage Calculation
+  let damage = 0;
+  let isCrit = false; // For screen shake
+
+  if (skill.type === "chaos") {
+    const mult = gaussianRandom(1.5, 1.2);
+    damage = Math.floor(skill.points * mult);
+    if (damage > skill.points * 2.5) isCrit = true;
+  } else if (skill.type === "vampire") {
+    damage = Math.floor(skill.points * 0.6);
+        const heal = Math.floor(damage * 0.5); // increased heal for visibility
+        if (heal > 0) {
+            attacker.stats.hp = Math.min(attacker.stats.hp + heal, attacker.stats.maxHp);
+            createFloatingText(attackerId, `+${heal}`, 'heal-float');
+            updateHpBars();
+            log(`${attacker.name} drains ${heal} HP!`);
+            createParticles(attackerId, 'heal');
+        }
+    } else if (skill.type === 'stun') {
+        damage = Math.floor(skill.points * 0.4); // slightly buffed dmg
+        if (Math.random() < 0.45) { // 45% chance
+            defender.frozen = true;
+            document.getElementById(`p${defenderId}-freeze-overlay`).classList.remove('hidden');
+            log(`❄️ ${defender.name} is FROZEN!`);
+            createParticles(defenderId, 'stun');
+        }
+    }
+
+    if (damage < 0) damage = 0;
+    
+    // Apply Damage
+    defender.stats.hp -= damage;
+    if (defender.stats.hp < 0) defender.stats.hp = 0;
+    
+    createFloatingText(defenderId, `-${damage}`, 'damage-float');
+    updateHpBars();
+    
+    // Hit Reaction Animation
+    const recoilClass = defenderId === 1 ? 'hit-recoil-left' : 'hit-recoil-right';
+    document.getElementById(`p${defenderId}-arena-img`).classList.add(recoilClass);
+    setTimeout(() => document.getElementById(`p${defenderId}-arena-img`).classList.remove(recoilClass), 400);
+
+    // Particles on Hit
+    if(damage > 0) {
+        if(skill.type === 'chaos') createParticles(defenderId, 'chaos');
+        else if(skill.type === 'vampire') createParticles(defenderId, 'vampire');
+        else createParticles(defenderId, 'stun'); // generic reuse for standard
+    }
+    
+    log(`It deals ${damage} damage!`);
+
+  if (isCrit) {
+    document.body.classList.add("screen-shake");
+    setTimeout(() => document.body.classList.remove("screen-shake"), 500);
+    log(`CRITICAL HIT! Massize variance spike!`);
+  }
+
+    if (!fromNetwork) {
+        // Sync State after move (Host only)
+        if (state.mode === 'host') {
+            sendData('SYNC_STATE', { 
+                players: state.players,
+                logs: [] // Logs handled separately in real-time
+            });
+        }
+    }
+
+    if (defender.stats.hp <= 0) {
+        endGame(attackerId);
+    } else {
+        setTimeout(endTurn, 1000);
+    }
+}
+
+function createFloatingText(playerId, text, className) {
+    const container = document.getElementById(`p${playerId}-floater-container`);
+    const el = document.createElement('div');
+    el.className = className;
+    el.textContent = text;
+    el.style.left = `${Math.random() * 40 - 20}px`; // random x offset
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 1000);
+}
+
+function createParticles(playerId, type) {
+    const target = document.getElementById(`p${playerId}-arena-img`);
+    const rect = target.getBoundingClientRect();
+    const container = document.getElementById('particles');
+    
+    // Spawn 10 particles
+    for(let i=0; i<15; i++) {
+        const p = document.createElement('div');
+        p.classList.add('particle', `particle-${type}`);
+        
+        // Random position around center of target
+        const x = rect.left + rect.width/2 + (Math.random()-0.5) * 50;
+        const y = rect.top + rect.height/2 + (Math.random()-0.5) * 50;
+        
+        p.style.left = `${x}px`;
+        p.style.top = `${y}px`;
+        p.style.width = `${Math.random()*8 + 4}px`;
+        p.style.height = p.style.width;
+        
+        // Random drift direction via CSS transform is handled in keyframes, 
+        // but we can randomise animation duration slightly
+        p.style.animationDuration = `${0.5 + Math.random()*0.5}s`;
+        
+        container.appendChild(p);
+        setTimeout(() => p.remove(), 1000);
+    }
+}
+
+function updateHpBars() {
+  [1, 2].forEach((id) => {
+    const p = state.players[id];
+    const bar = document.getElementById(`p${id}-hp-bar`);
+    const pct = (p.stats.hp / p.stats.maxHp) * 100;
+    bar.style.width = `${pct}%`;
+    document.getElementById(`p${id}-hp-text`).textContent =
+      `${p.stats.hp} / ${p.stats.maxHp} HP`;
+  });
+}
+
+function log(msg) {
+  const el = document.getElementById("battle-log");
+  const line = document.createElement("div");
+  line.className = "mb-1 border-b border-slate-700/50 pb-1 last:border-0";
+  line.innerHTML = `<span class="text-slate-500">[${new Date().toLocaleTimeString().slice(0, 5)}]</span> ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function endTurn() {
+    // Start Math Phase for next turn
+    if (state.mode === 'host') {
+        startMathPhase();
+    }
+}
+
+function endGame(winnerId) {
+  state.battleActive = false;
+  state.winnerId = winnerId;
+  document.getElementById("victory-overlay").classList.remove("hidden");
+  document.getElementById("winner-name").textContent =
+    `${state.players[winnerId].name} WINS!`;
+  document.getElementById("share-btn").classList.remove("hidden");
+}
+
+/* --- Share Logic --- */
+
+function shareBuild() {
+    const winnerId = state.winnerId || 1; // Default to P1 if sharing from creator (feature expansion) or if winnerId not set
+    const p = state.players[winnerId];
+    
+    const params = new URLSearchParams();
+    params.set('name', p.name);
+    params.set('arch', p.archetype);
+    
+    p.skills.forEach((s, i) => {
+        params.set(`s${i+1}n`, s.name);
+        params.set(`s${i+1}t`, s.type);
+        params.set(`s${i+1}p`, s.points);
+    });
+    
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('share-btn');
+        const originalText = btn.textContent;
+        btn.textContent = "Copied! 📋";
+        setTimeout(() => btn.textContent = originalText, 2000);
+    });
+}
+
+// Note: Simple serialization for MVP. 
+// Ideally w/ compression but URL params are fine for this scope.
+function loadSharedBuild() {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    const p2 = state.players[2];
+    p2.name = urlParams.get('name') || "Challenger";
+    p2.archetype = urlParams.get('arch') || "Titan"; // Default if missing
+    
+    // Decode skills (s1n, s1t, s1p...)
+    for(let i=0; i<3; i++) {
+        p2.skills[i].name = urlParams.get(`s${i+1}n`) || `Skill ${i+1}`;
+        p2.skills[i].type = urlParams.get(`s${i+1}t`) || "chaos";
+        p2.skills[i].points = parseInt(urlParams.get(`s${i+1}p`)) || 0;
+    }
+    
+    // Validate points just in case URL is messed up
+    let total = 0;
+    p2.skills.forEach(s => total += s.points);
+    if (total !== 100) {
+        // Simple fix: reset to default if invalid
+        p2.skills[0].points = 40;
+        p2.skills[1].points = 30;
+        p2.skills[2].points = 30;
+    }
+
+    renderPlayerToCreator(2);
+    
+    log("Challenger loaded from URL!");
+}
+
+/* --- Barracks (Local Storage) --- */
+
+function saveCharacter(pid) {
+    const p = state.players[pid];
+    if(!p.name) {
+        setStatus("Character needs a name before saving.", "warn");
+        return;
+    }
+    
+    const charData = {
+        id: Date.now(),
+        name: p.name,
+        photo: p.photo,
+        archetype: p.archetype,
+        skills: p.skills
+    };
+    
+    const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
+    library.push(charData);
+    localStorage.setItem('gba_library', JSON.stringify(library));
+    setStatus(`${p.name} saved to Barracks.`, "ok");
+}
+
+function loadCharacter(id) {
+    const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
+    const char = library.find(c => c.id === id);
+    if(!char) return;
+    
+    const p1 = state.players[1];
+    p1.name = char.name;
+    p1.photo = char.photo;
+    p1.archetype = char.archetype;
+    p1.skills = JSON.parse(JSON.stringify(char.skills)); // Deep copy
+    
+    renderPlayerToCreator(1);
+    document.getElementById('barracks-modal').classList.add('hidden');
+}
+
+function deleteCharacter(id) {
+    if(!confirm("Delete this hero permanently?")) return;
+    let library = JSON.parse(localStorage.getItem('gba_library') || '[]');
+    library = library.filter(c => c.id !== id);
+    localStorage.setItem('gba_library', JSON.stringify(library));
+    renderBarracks();
+}
+
+function renderBarracks() {
+    const list = document.getElementById('barracks-list');
+    const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
+    
+    list.innerHTML = '';
+    
+    if(library.length === 0) {
+        list.innerHTML = '<p class="text-slate-500 italic col-span-2 text-center">No heroes saved yet.</p>';
+        return;
+    }
+    
+    library.forEach(char => {
+        const card = document.createElement('div');
+        card.className = "bg-slate-900 p-3 rounded-xl border border-slate-700 flex gap-3 items-center hover:border-cyan-500 transition-colors cursor-pointer group";
+        
+        card.innerHTML = `
+            <img src="${char.photo || 'https://via.placeholder.com/50'}" class="w-12 h-12 rounded-full object-cover border border-slate-600">
+            <div class="flex-grow">
+                <h4 class="font-bold text-white text-sm">${char.name}</h4>
+                <div class="text-xs text-slate-400">${char.archetype}</div>
+            </div>
+            <button class="delete-btn text-slate-600 hover:text-red-400 p-2 z-10" title="Delete">🗑️</button>
+        `;
+        
+        // Load on click
+        card.addEventListener('click', (e) => {
+            if(!e.target.closest('.delete-btn')) {
+                loadCharacter(char.id);
+            }
+        });
+        
+        // Delete action
+        card.querySelector('.delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteCharacter(char.id);
+        });
+        
+        list.appendChild(card);
+    });
+}
+
+/* --- PeerJS Multiplayer --- */
+
+function initPeer() {
+    return new Promise((resolve, reject) => {
+        if (state.peer) return resolve(state.peer);
+        const peer = new Peer();
+        peer.on('open', (id) => {
+            console.log('My peer ID is: ' + id);
+            state.peer = peer;
+            resolve(peer);
+        });
+        peer.on('error', (err) => console.error(err));
+    });
+}
+
+function hostGame() {
+    if (!passAccessGate()) return;
+    initPeer().then(peer => {
+        state.mode = 'host';
+        document.getElementById('host-game-btn').classList.add('hidden');
+        document.getElementById('host-link-area').classList.remove('hidden');
+        document.getElementById('host-link-input').value = buildInviteLink(peer.id);
+        
+        // Wait for connection
+        peer.on('connection', (conn) => {
+            setupConnection(conn);
+            // Hide modal implies start
+            document.getElementById('online-modal').classList.add('hidden');
+            setStatus("Opponent connected. You can start the online 1v1 battle.", "ok");
+            checkValidation();
+        });
+        setStatus("Room created. Share the Room ID and wait for your opponent.", "warn");
+        checkValidation();
+    });
+}
+
+function joinGame(hostId) {
+    if (!passAccessGate()) return;
+    initPeer().then(peer => {
+        state.mode = 'guest';
+        const cleanHostId = normalizeHostId(hostId);
+        if (!cleanHostId) {
+            setStatus("Invalid invite or room ID.", "warn");
+            return;
+        }
+        const conn = peer.connect(cleanHostId);
+        setupConnection(conn);
+        setStatus("Joining room...", "warn");
+        checkValidation();
+    });
+}
+
+function normalizeHostId(rawInput) {
+    const value = (rawInput || "").trim();
+    if (!value) return "";
+    if (!value.includes("://")) return value;
+    try {
+        const url = new URL(value);
+        return url.searchParams.get("join") || "";
+    } catch {
+        return "";
+    }
+}
+
+function copyInviteLink() {
+    const input = document.getElementById("host-link-input");
+    if (!input || !input.value) {
+        setStatus("Create a room first to generate an invite link.", "warn");
+        return;
+    }
+    navigator.clipboard.writeText(input.value).then(() => {
+        setStatus("Invite link copied. Send it to your opponent.", "ok");
+    }).catch(() => {
+        setStatus("Copy failed. Manually copy the invite link.", "warn");
+    });
+}
+
+function setupConnection(conn) {
+    state.conn = conn;
+    
+    conn.on('open', () => {
+        console.log("Connected to peer!");
+        
+        // Handshake
+        // Host is P1, Guest is P2.
+        // If I am Host, I don't send P1 yet, I wait for Guest P2.
+        // Actually simpler: Just exchange current user's player data.
+        
+        // Since Creator UI treats us as interacting with P1 or P2 slots...
+        // In Online: You are ALWAYS "Player 1" in your local Creator UI.
+        // When you Host, you stay P1. 
+        // When you Join, you become P2 relative to the Host.
+        
+        // Normalize guest local slots once before first profile sync.
+        if (state.mode === 'guest' && !state.guestProfileInitialized) {
+            state.players[2] = JSON.parse(JSON.stringify(state.players[1]));
+            state.guestProfileInitialized = true;
+        }
+
+        const myChar = state.mode === 'guest' ? state.players[2] : state.players[1]; 
+        
+        sendData('HANDSHAKE', { char: myChar });
+        
+        document.getElementById('online-modal').classList.add('hidden');
+        setStatus("Connected. Verify both builds and start battle.", "ok");
+        checkValidation();
+    });
+
+    conn.on('data', (data) => handleData(data));
+    conn.on('error', (err) => {
+        console.error("Connection error:", err);
+        setStatus("Connection error. Check room link and retry.", "warn");
+    });
+    conn.on('close', () => {
+        state.conn = null;
+        state.battleActive = false;
+        state.guestProfileInitialized = false;
+        setStatus("Connection closed. Re-open Online and reconnect.", "warn");
+        checkValidation();
+    });
+}
+
+function sendData(type, payload) {
+    if (state.conn && state.conn.open) {
+        state.conn.send({ type, payload });
+    }
+}
+
+function handleData(data) {
+    const { type, payload } = data;
+    console.log("Received:", type, payload);
+    
+    if (type === 'HANDSHAKE') {
+        if (state.mode === 'guest') {
+            state.players[1] = payload.char; // Load host char
+            
+            // Allow Guest to "Ready Up" -> In this simple version, handshake implies ready.
+            // Update UI
+            renderPlayerToCreator(1);
+            renderPlayerToCreator(2);
+            
+            // Wait for Host to START battle.
+            document.getElementById('start-battle-btn').disabled = true;
+            document.getElementById('start-battle-btn').textContent = "WAITING FOR HOST...";
+            setStatus("Connected to host. Waiting for host to start.", "ok");
+            
+        } else {
+            // I am Host. My char is P1. Guest char (payload) goes to P2.
+            state.players[2] = payload.char;
+            renderPlayerToCreator(2);
+            // Verify and Enable Start
+            setStatus("Guest profile synced. Ready when both builds are valid.", "ok");
+            checkValidation();
+        }
+        
+    } else if (type === 'SYNC_STATS') {
+        // Guest receives rolled stats
+        state.players[1].stats = payload.p1;
+        state.players[2].stats = payload.p2;
+        
+        // Update UI
+        updateHpBars();
+        for(let i=1; i<=2; i++) {
+            document.getElementById(`p${i}-speed-display`).textContent = `SPD: ${state.players[i].stats.speed}`;
+            document.getElementById(`p${i}-hp-text`).textContent = `${state.players[i].stats.hp} / ${state.players[i].stats.maxHp} HP`;
+            document.getElementById(`p${i}-arch-display`).textContent = `ARCH: ${state.players[i].archetype}`;
+        }
+        
+    } else if (type === 'SYNC_TURN') {
+        state.turn = payload.turn;
+        updateTurnUI();
+        
+    } else if (type === 'START_BATTLE') {
+        // Guest receives start command
+        document.getElementById('creator-screen').classList.add('hidden');
+        document.getElementById('arena-screen').classList.remove('hidden');
+        document.getElementById('arena-screen').classList.add('flex');
+        
+        // Setup Arena UI
+        for(let i=1; i<=2; i++) {
+            document.getElementById(`p${i}-arena-name`).textContent = state.players[i].name;
+            document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || "https://via.placeholder.com/150";
+        }
+        
+        rollStatsAnimation(); // Visuals only for guest
+        
+    } else if (type === 'MOVE') {
+        // Host receives Move command from Guest
+        if(state.mode === 'host') {
+             executeMove(payload.skill, true);
+        }
+        
+    } else if (type === 'SYNC_STATE') {
+        // Guest receives full state update (HP, etc) from Host
+        state.players[1] = payload.players[1];
+        state.players[2] = payload.players[2];
+        updateHpBars();
+        // Also ensure UI reflects frozen state etc?
+    } else if (type === 'MATH_START') {
+        state.mathChallenge.correctAnswer = payload.a;
+        renderMathModal(payload);
+    } else if (type === 'MATH_SOLVED') {
+        resolveMathPhase(payload.winner);
+    }
+}
