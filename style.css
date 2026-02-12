@@ -81,73 +81,134 @@ body {
 }
 
 .attack-jump-left {
-    animation: jump-left 0.3s ease-in-out;
+  animation: jump-left 0.3s ease-in-out;
 }
 
 /* Hit Reactions */
 @keyframes recoil-right {
-    0% { transform: translateX(0); }
-    20% { transform: translateX(20px) skewX(-5deg); filter: brightness(2); }
-    40% { transform: translateX(10px); }
-    100% { transform: translateX(0); filter: brightness(1); }
+  0% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(20px) skewX(-5deg);
+    filter: brightness(2);
+  }
+  40% {
+    transform: translateX(10px);
+  }
+  100% {
+    transform: translateX(0);
+    filter: brightness(1);
+  }
 }
 
 @keyframes recoil-left {
-    0% { transform: translateX(0); }
-    20% { transform: translateX(-20px) skewX(5deg); filter: brightness(2); }
-    40% { transform: translateX(-10px); }
-    100% { transform: translateX(0); filter: brightness(1); }
+  0% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-20px) skewX(5deg);
+    filter: brightness(2);
+  }
+  40% {
+    transform: translateX(-10px);
+  }
+  100% {
+    transform: translateX(0);
+    filter: brightness(1);
+  }
 }
 
 .hit-recoil-right {
-    animation: recoil-right 0.4s ease-out;
+  animation: recoil-right 0.4s ease-out;
 }
 
 .hit-recoil-left {
-    animation: recoil-left 0.4s ease-out;
+  animation: recoil-left 0.4s ease-out;
 }
 
-/* Particle Effects */
+/* Detailed Particle Effects */
 .particle {
-    position: absolute;
-    pointer-events: none;
-    border-radius: 50%;
-    animation: fade-out 1s forwards;
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  animation: fade-out 1s forwards; /* Default, overridden by JS sometimes */
 }
 
 @keyframes fade-out {
-    0% { opacity: 1; transform: scale(1); }
-    100% { opacity: 0; transform: scale(3); }
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+}
+
+@keyframes drop-fade {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(50px) scale(0);
+  }
 }
 
 .particle-chaos {
-    background: radial-gradient(circle, #f87171, #991b1b);
-    box-shadow: 0 0 10px #ef4444;
+  background: radial-gradient(
+    circle,
+    #fca5a5,
+    #dc2626
+  ); /* red-300 to red-600 */
+  box-shadow: 0 0 15px rgba(220, 38, 38, 0.8);
 }
 
 .particle-vampire {
-    background: radial-gradient(circle, #a78bfa, #5b21b6);
-    box-shadow: 0 0 10px #8b5cf6;
+  background: radial-gradient(
+    circle,
+    #d8b4fe,
+    #7c3aed
+  ); /* purple-300 to purple-600 */
+  box-shadow: 0 0 15px rgba(124, 58, 237, 0.8);
 }
 
 .particle-stun {
-    background: radial-gradient(circle, #67e8f9, #0e7490);
-    box-shadow: 0 0 10px #06b6d4;
+  background: radial-gradient(
+    circle,
+    #67e8f9,
+    #0891b2
+  ); /* cyan-300 to cyan-600 */
+  box-shadow: 0 0 15px rgba(8, 145, 178, 0.8);
 }
 
 .particle-heal {
-    background: radial-gradient(circle, #4ade80, #166534);
-    box-shadow: 0 0 10px #22c55e;
+  background: radial-gradient(
+    circle,
+    #86efac,
+    #16a34a
+  ); /* green-300 to green-600 */
+  box-shadow: 0 0 15px rgba(22, 163, 74, 0.8);
+}
+
+.particle-victory {
+  animation: drop-fade 3s forwards ease-in;
 }
 
 /* Floating Heal Numbers */
 @keyframes float-up {
   0% {
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-30px) scale(1.5);
     opacity: 1;
   }
   100% {
-    transform: translateY(-50px);
+    transform: translateY(-60px) scale(1);
     opacity: 0;
   }
 }
@@ -155,37 +216,56 @@ body {
 .heal-float {
   position: absolute;
   color: #4ade80; /* emerald-400 */
-  font-weight: bold;
-  font-size: 1.5rem;
+  font-weight: 900;
+  font-size: 2rem;
+  text-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
   pointer-events: none;
-  animation: float-up 1s ease-out forwards;
+  animation: float-up 1.2s ease-out forwards;
+  z-index: 50;
 }
 
 .damage-float {
   position: absolute;
   color: #f87171; /* red-400 */
-  font-weight: bold;
-  font-size: 1.5rem;
+  font-weight: 900;
+  font-size: 2.5rem;
+  text-shadow: 0 0 10px rgba(248, 113, 113, 0.5);
   pointer-events: none;
   animation: float-up 1s ease-out forwards;
+  z-index: 50;
 }
 
-/* Stat Flicker - Rapid number cycling */
-.stat-flicker {
-  color: #fca5a5; /* red-300 - or any chaotic color */
+/* Scanning Effect for Stats */
+@keyframes scan {
+  0% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 10px currentColor;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+
+.scanning-text {
+  animation: scan 0.1s infinite alternate;
+  font-family: "Courier New", Courier, monospace;
+  letter-spacing: 2px;
 }
 
 /* Freeze Tint - for Stun Lock effect */
 .freeze-tint {
-  filter: sepia(100%) hue-rotate(190deg) saturate(500%);
-  transition: filter 0.3s ease;
+  filter: sepia(100%) hue-rotate(190deg) saturate(300%) contrast(1.2);
+  transition: filter 0.5s ease;
 }
 
 /* Active Turn Indicator */
 .active-turn {
-  box-shadow: 0 0 20px rgba(6, 182, 212, 0.5); /* cyan glow */
+  box-shadow: 0 0 30px rgba(6, 182, 212, 0.6); /* cyan glow */
   border-color: #06b6d4;
-  transform: scale(1.02);
+  transform: scale(1.03);
 }
 
 /* HP Bar Smooth Transition */
@@ -216,5 +296,5 @@ body {
   background-color: #0891b2 !important; /* cyan-600 */
   color: white;
   font-weight: bold;
-  box-shadow: 0 0 10px rgba(8, 145, 178, 0.4);
+  box-shadow: 0 0 15px rgba(8, 145, 178, 0.5);
 }

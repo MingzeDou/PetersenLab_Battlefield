@@ -523,18 +523,18 @@ async function startBattle() {
 async function rollStatsAnimation() {
     // If Guest, we wait for stats from Host. We don't roll logic, just animation.
     if (state.mode === 'guest') {
-        // Animation visuals only
         const p1Stats = document.getElementById('p1-speed-display');
         const p2Stats = document.getElementById('p2-speed-display');
         const p1Hp = document.getElementById('p1-hp-text');
         const p2Hp = document.getElementById('p2-hp-text');
         
-        for(let i=0; i<20; i++) {
-            p1Stats.textContent = `SPD: ${Math.floor(Math.random()*100)}`;
-            p2Stats.textContent = `SPD: ${Math.floor(Math.random()*100)}`;
-            p1Hp.textContent = `${Math.floor(Math.random()*200)} HP`;
-            p2Hp.textContent = `${Math.floor(Math.random()*200)} HP`;
-            await new Promise(r => setTimeout(r, 50 + i*10));
+        // Scanning Phase
+        for(let i=0; i<15; i++) {
+            p1Stats.innerHTML = `<span class="scanning-text">SCANNING...</span>`;
+            p2Stats.innerHTML = `<span class="scanning-text">SCANNING...</span>`;
+            p1Hp.innerHTML = `<span class="scanning-text">Analyzing Bio-Data...</span>`;
+            p2Hp.innerHTML = `<span class="scanning-text">Analyzing Bio-Data...</span>`;
+            await new Promise(r => setTimeout(r, 100));
         }
         return; // Stats set via network sync
     }
@@ -565,12 +565,12 @@ async function rollStatsAnimation() {
     }
 
     // Animation Loop
-  for (let i = 0; i < 20; i++) {
-    p1Stats.textContent = `SPD: ${Math.floor(Math.random() * 100)}`;
-    p2Stats.textContent = `SPD: ${Math.floor(Math.random() * 100)}`;
-    p1Hp.textContent = `${Math.floor(Math.random() * 200)} HP`;
-    p2Hp.textContent = `${Math.floor(Math.random() * 200)} HP`;
-    await new Promise((r) => setTimeout(r, 50 + i * 10));
+  for (let i = 0; i < 15; i++) {
+    p1Stats.innerHTML = `<span class="scanning-text">SCANNING...</span>`;
+    p2Stats.innerHTML = `<span class="scanning-text">SCANNING...</span>`;
+    p1Hp.innerHTML = `<span class="scanning-text">Analyzing Bio-Data...</span>`;
+    p2Hp.innerHTML = `<span class="scanning-text">Analyzing Bio-Data...</span>`;
+    await new Promise((r) => setTimeout(r, 100));
   }
 
   // Final Set
@@ -797,10 +797,20 @@ function createParticles(playerId, type) {
     const rect = target.getBoundingClientRect();
     const container = document.getElementById('particles');
     
-    // Spawn 10 particles
-    for(let i=0; i<15; i++) {
+    // Spawn more particles for better effect
+    const count = type === 'victory' ? 50 : 20;
+
+    for(let i=0; i<count; i++) {
         const p = document.createElement('div');
-        p.classList.add('particle', `particle-${type}`);
+        p.classList.add('particle');
+        
+        if (type === 'victory') {
+            // Random colors for victory
+            const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500'];
+            p.classList.add(colors[Math.floor(Math.random() * colors.length)], 'particle-victory');
+        } else {
+            p.classList.add(`particle-${type}`);
+        }
         
         // Random position around center of target
         const x = rect.left + rect.width/2 + (Math.random()-0.5) * 50;
@@ -808,15 +818,16 @@ function createParticles(playerId, type) {
         
         p.style.left = `${x}px`;
         p.style.top = `${y}px`;
-        p.style.width = `${Math.random()*8 + 4}px`;
-        p.style.height = p.style.width;
         
-        // Random drift direction via CSS transform is handled in keyframes, 
-        // but we can randomise animation duration slightly
-        p.style.animationDuration = `${0.5 + Math.random()*0.5}s`;
+        const size = Math.random()*8 + 4;
+        p.style.width = `${size}px`;
+        p.style.height = `${size}px`;
+        
+        // Randomize animation
+        p.style.animationDuration = `${0.6 + Math.random()*0.6}s`;
         
         container.appendChild(p);
-        setTimeout(() => p.remove(), 1000);
+        setTimeout(() => p.remove(), 1500);
     }
 }
 
@@ -854,6 +865,15 @@ function endGame(winnerId) {
   document.getElementById("winner-name").textContent =
     `${state.players[winnerId].name} WINS!`;
   document.getElementById("share-btn").classList.remove("hidden");
+  
+  // Victory Celebration
+  const interval = setInterval(() => {
+    if(document.getElementById("victory-overlay").classList.contains("hidden")) {
+        clearInterval(interval);
+        return;
+    }
+    createParticles(winnerId, 'victory'); // Uses our enhanced particle function
+  }, 300);
 }
 
 /* --- Share Logic --- */
