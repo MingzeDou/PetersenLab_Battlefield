@@ -79,17 +79,45 @@ function isOnlineReady() {
     return Boolean(state.mode && state.conn && state.conn.open);
 }
 
+// Access Gate Logic
+function initAccessGate() {
+    const gate = document.getElementById('access-gate');
+    const input = document.getElementById('access-key');
+    const btn = document.getElementById('access-btn');
+    const msg = document.getElementById('access-msg');
+    
+    // Check if already authorized in this session
+    if (sessionStorage.getItem('access_granted') === 'true') {
+        gate.classList.add('hidden');
+        return;
+    }
+    
+    const checkAccess = () => {
+        const val = input.value.trim();
+        if (val === ACCESS_GATE.answer) {
+            sessionStorage.setItem('access_granted', 'true');
+            gate.style.opacity = '0';
+            setTimeout(() => gate.classList.add('hidden'), 500);
+        } else {
+            input.value = '';
+            input.classList.add('shake-input');
+            msg.textContent = "ACCESS DENIED";
+            setTimeout(() => {
+                input.classList.remove('shake-input');
+                msg.textContent = "";
+            }, 500);
+        }
+    };
+    
+    btn.addEventListener('click', checkAccess);
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') checkAccess();
+    });
+}
+
 function passAccessGate() {
-    const response = window.prompt(ACCESS_GATE.question, "");
-    if (response === null) {
-        setStatus("Access check canceled.", "warn");
-        return false;
-    }
-    if (response.trim() !== ACCESS_GATE.answer) {
-        setStatus("Access denied: invalid lab key.", "warn");
-        return false;
-    }
-    return true;
+    // Deprecated in favor of initAccessGate blocking overlay
+    return sessionStorage.getItem('access_granted') === 'true';
 }
 
 function buildInviteLink(hostId) {
@@ -266,6 +294,7 @@ function resolveMathPhase(winnerId) {
 /* --- Initialization & UI Setup --- */
 
 document.addEventListener("DOMContentLoaded", () => {
+  initAccessGate(); // Initialize blocking overlay
   setupCreatorUI(1);
   setupCreatorUI(2);
   lockOpponentCreatorSlot();
@@ -613,6 +642,16 @@ function updateTurnUI() {
   // Action Buttons
   const btnContainer = document.getElementById("action-buttons");
   btnContainer.innerHTML = "";
+
+  // Online Turn Control
+  let canAct = true;
+  if (state.mode === 'host' && active !== 1) canAct = false;
+  if (state.mode === 'guest' && active !== 2) canAct = false;
+
+  if (!canAct && isOnlineReady()) {
+      btnContainer.innerHTML = `<div class="text-center text-slate-500 italic py-4 waiting-turn">Waiting for Opponent...</div>`;
+      return;
+  }
 
   if (state.players[active].frozen) {
     log(`${state.players[active].name} is FROZEN and skips their turn!`);
@@ -1036,7 +1075,7 @@ function initPeer() {
 }
 
 function hostGame() {
-    if (!passAccessGate()) return;
+    if (!passAccessGate()) return; // Double check
     initPeer().then(peer => {
         state.mode = 'host';
         document.getElementById('host-game-btn').classList.add('hidden');
@@ -1057,7 +1096,7 @@ function hostGame() {
 }
 
 function joinGame(hostId) {
-    if (!passAccessGate()) return;
+    if (!passAccessGate()) return; // Double check
     initPeer().then(peer => {
         state.mode = 'guest';
         const cleanHostId = normalizeHostId(hostId);

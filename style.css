@@ -298,3 +298,33 @@ body {
   font-weight: bold;
   box-shadow: 0 0 15px rgba(8, 145, 178, 0.5);
 }
+
+/* Access Gate Overlay */
+#access-gate {
+    backdrop-filter: blur(10px);
+}
+
+#access-key {
+    letter-spacing: 0.5rem;
+}
+
+/* Shake Animation for Wrong Password */
+.shake-input {
+    animation: shake-input 0.4s ease-in-out;
+    border-color: #fca5a5 !important; /* red-300 */
+}
+
+@keyframes shake-input {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-10px); }
+    40% { transform: translateX(10px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(5px); }
+}
+
+/* Waiting / Disabled State for Controls */
+.waiting-turn {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(100%);
+}
