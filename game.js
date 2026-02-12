@@ -41,9 +41,21 @@ const state = {
 };
 
 const ARCHETYPES = {
-  Titan: { hpMean: 120, hpSigma: 25, speedMean: 30, speedSigma: 10 },
-  Ghost: { hpMean: 70, hpSigma: 15, speedMean: 60, speedSigma: 12 },
-  Maverick: { hpMean: 95, hpSigma: 30, speedMean: 45, speedSigma: 18 },
+  Titan: { 
+      hpMean: 120, hpSigma: 25, speedMean: 30, speedSigma: 10,
+      image: 'assets/titan.png',
+      description: "A cybernetically enhanced juggernaut. The Titan sacrifices speed for immense durability, dominating the arena with raw power and resilience."
+  },
+  Ghost: { 
+      hpMean: 70, hpSigma: 15, speedMean: 60, speedSigma: 12,
+      image: 'assets/ghost.png',
+      description: "A phantom assassin utilizing light-refraction cloaks. The Ghost relies on blinding speed and precision strikes to dismantle foes before they can react."
+  },
+  Maverick: { 
+      hpMean: 95, hpSigma: 30, speedMean: 45, speedSigma: 18,
+      image: 'assets/maverick.png',
+      description: "A tactical wild card equipped with experimental tech. The Maverick balances offense and defense, adaptable to any combat scenario."
+  },
 };
 
 const ACCESS_GATE = {
@@ -86,33 +98,55 @@ function initAccessGate() {
     const btn = document.getElementById('access-btn');
     const msg = document.getElementById('access-msg');
     
-    // Check if already authorized in this session
-    if (sessionStorage.getItem('access_granted') === 'true') {
-        gate.classList.add('hidden');
-        return;
+    // Check if already authorized in this session (Safely)
+    try {
+        if (sessionStorage.getItem('access_granted') === 'true') {
+            gate.classList.add('hidden');
+            return;
+        }
+    } catch (e) {
+        console.warn("Storage access restricted, session persistence disabled.");
     }
     
     const checkAccess = () => {
         const val = input.value.trim();
-        if (val === ACCESS_GATE.answer) {
-            sessionStorage.setItem('access_granted', 'true');
-            gate.style.opacity = '0';
-            setTimeout(() => gate.classList.add('hidden'), 500);
-        } else {
-            input.value = '';
-            input.classList.add('shake-input');
-            msg.textContent = "ACCESS DENIED";
-            setTimeout(() => {
-                input.classList.remove('shake-input');
-                msg.textContent = "";
-            }, 500);
-        }
+        
+        // Visual Feedback for click
+        btn.textContent = "VERIFYING...";
+        btn.disabled = true;
+        
+        setTimeout(() => {
+            if (val === ACCESS_GATE.answer) {
+                try {
+                    sessionStorage.setItem('access_granted', 'true');
+                } catch(e) {}
+                
+                gate.style.transition = 'opacity 0.8s ease';
+                gate.style.opacity = '0';
+                setTimeout(() => gate.classList.add('hidden'), 800);
+            } else {
+                input.value = '';
+                input.classList.add('shake-input');
+                msg.textContent = "ACCESS DENIED";
+                btn.textContent = "AUTHORIZE ACCESS";
+                btn.disabled = false;
+                
+                setTimeout(() => {
+                    input.classList.remove('shake-input');
+                    msg.textContent = "";
+                    input.focus();
+                }, 500);
+            }
+        }, 300); // Artificial delay for effect
     };
     
     btn.addEventListener('click', checkAccess);
-    input.addEventListener('keypress', (e) => {
+    input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') checkAccess();
     });
+    
+    // Auto-focus on load
+    input.focus();
 }
 
 function passAccessGate() {
@@ -360,14 +394,8 @@ function setupCreatorUI(pid) {
       // State Update
       state.players[pid].archetype = e.target.dataset.type;
 
-      // Description Update
-      const desc = document.querySelector(`.p${pid}-arch-desc`);
-      if (state.players[pid].archetype === "Titan")
-        desc.textContent = "Titan: High HP, Low Speed, High Variance";
-      else if (state.players[pid].archetype === "Ghost")
-        desc.textContent = "Ghost: Low HP, High Speed, Low Variance";
-      else desc.textContent = "Maverick: Balanced Stats, Wild Card";
-
+      // Update UI immediately via render
+      renderPlayerToCreator(pid);
       checkValidation();
     });
   });
@@ -383,9 +411,7 @@ function setupCreatorUI(pid) {
       const reader = new FileReader();
       reader.onload = (e) => {
         state.players[pid].photo = e.target.result;
-        preview.src = e.target.result;
-        preview.classList.remove("hidden");
-        text.classList.add("hidden");
+        renderPlayerToCreator(pid);
         checkValidation();
       };
       reader.readAsDataURL(file);
@@ -444,26 +470,31 @@ function updatePlayerState(pid) {
 function renderPlayerToCreator(pid) {
   const p = state.players[pid];
   document.getElementById(`p${pid}-name`).value = p.name || "";
-  document.getElementById(`p${pid}-preview`).src = p.photo || "";
-  if (p.photo) {
-    document.getElementById(`p${pid}-preview`).classList.remove("hidden");
-    document.getElementById(`p${pid}-upload-text`).classList.add("hidden");
-  } else {
-    document.getElementById(`p${pid}-preview`).classList.add("hidden");
-    document.getElementById(`p${pid}-upload-text`).classList.remove("hidden");
+  const activeArch = ARCHETYPES[p.archetype];
+  const desc = document.querySelector(`.p${pid}-arch-desc`);
+  if (activeArch) {
+      desc.textContent = activeArch.description;
   }
 
-  document.querySelectorAll(`.p${pid}-arch`).forEach((b) => {
-    const active = b.dataset.type === p.archetype;
-    b.classList.toggle("active-arch", active);
-    b.classList.toggle("bg-cyan-600", active);
-    b.classList.toggle("text-white", active);
-  });
-
-  const desc = document.querySelector(`.p${pid}-arch-desc`);
-  if (p.archetype === "Titan") desc.textContent = "Titan: High HP, Low Speed, High Variance";
-  else if (p.archetype === "Ghost") desc.textContent = "Ghost: Low HP, High Speed, Low Variance";
-  else desc.textContent = "Maverick: Balanced Stats, Wild Card";
+  // Show photo if uploaded, otherwise show default archetype image
+  const imgUrl = p.photo || activeArch.image;
+  const preview = document.getElementById(`p${pid}-preview`);
+  const text = document.getElementById(`p${pid}-upload-text`);
+  
+  preview.src = imgUrl;
+  preview.classList.remove("hidden");
+  
+  // If custom photo, hide text. If default, show text "Upload Photo" overlaying it slightly or just hide text? 
+  // Let's keep text hidden if any image is shown to keep it clean, or show icon.
+  // Actually, we want to allow uploading.
+  if (p.photo) {
+      text.textContent = "Change Photo";
+      text.classList.add("bg-slate-900/50", "rounded", "px-1");
+  } else {
+      text.textContent = "Upload Photo";
+      text.classList.add("bg-slate-900/50", "rounded", "px-1");
+  }
+  text.classList.remove("hidden");
 
   for (let i = 0; i < 3; i++) {
     document.getElementById(`p${pid}-s${i + 1}-name`).value = p.skills[i].name || "";
@@ -531,7 +562,7 @@ async function startBattle() {
     // Setup Arena UI
     for(let i=1; i<=2; i++) {
         document.getElementById(`p${i}-arena-name`).textContent = state.players[i].name;
-        document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || "https://via.placeholder.com/150";
+        document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || ARCHETYPES[state.players[i].archetype].image;
     }
 
     if (state.mode === 'host') {
@@ -1240,7 +1271,7 @@ function handleData(data) {
         // Setup Arena UI
         for(let i=1; i<=2; i++) {
             document.getElementById(`p${i}-arena-name`).textContent = state.players[i].name;
-            document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || "https://via.placeholder.com/150";
+            document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || ARCHETYPES[state.players[i].archetype].image;
         }
         
         rollStatsAnimation(); // Visuals only for guest
