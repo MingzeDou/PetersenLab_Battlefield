@@ -97,6 +97,29 @@ function getRequiredValidationPlayers() {
     return [1];
 }
 
+function getLocalCreatorPlayerId() {
+    if (state.mode === 'guest') return 2;
+    return 1;
+}
+
+function updateSaveButtons() {
+    const localPid = getLocalCreatorPlayerId();
+    [1, 2].forEach((pid) => {
+        const btn = document.getElementById(`p${pid}-save-btn`);
+        if (!btn) return;
+        if (pid === localPid) btn.classList.remove('hidden');
+        else btn.classList.add('hidden');
+    });
+}
+
+function syncLocalProfile() {
+    if (!isOnlineReady()) return;
+    const localPid = state.mode === 'guest' ? 2 : 1;
+    sendData('PROFILE_SYNC', {
+        char: state.players[localPid],
+    });
+}
+
 // Access Gate Logic
 function initAccessGate() {
     const gate = document.getElementById('access-gate');
@@ -331,6 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupCreatorUI(2);
     renderPlayerToCreator(1);
     renderPlayerToCreator(2);
+    updateSaveButtons();
   toggleCardLock(2, true);
   checkValidation();
     
@@ -340,8 +364,12 @@ document.addEventListener("DOMContentLoaded", () => {
       renderBarracks();
   });
   
-  document.getElementById('save-p1-btn').addEventListener("click", () => {
+  document.getElementById('p1-save-btn').addEventListener("click", () => {
       saveCharacter(1);
+      renderBarracks();
+  });
+  document.getElementById('p2-save-btn').addEventListener("click", () => {
+      saveCharacter(2);
       renderBarracks();
   });
 
@@ -399,6 +427,8 @@ function toggleCardLock(pid, isLocked) {
             ? "px-3 py-1 bg-cyan-900/30 text-cyan-400 text-xs font-bold rounded-full border border-cyan-500/30"
             : "px-3 py-1 bg-purple-900/30 text-purple-400 text-xs font-bold rounded-full border border-purple-500/30";
     }
+
+    updateSaveButtons();
 }
 
 function setupCreatorUI(pid) {
@@ -494,6 +524,10 @@ function updatePlayerState(pid) {
   if (pointsRem < 0) pointsSpan.className = "text-xs font-mono font-bold text-red-500";
   else if (pointsRem === 0) pointsSpan.className = "text-xs font-mono font-bold text-emerald-400";
   else pointsSpan.className = "text-xs font-mono font-bold text-yellow-400";
+
+    if ((state.mode === 'host' && pid === 1) || (state.mode === 'guest' && pid === 2)) {
+        syncLocalProfile();
+    }
 }
 
 function renderPlayerToCreator(pid) {
@@ -1068,7 +1102,7 @@ function saveCharacter(pid) {
         name: p.name,
         photo: p.photo,
         archetype: p.archetype,
-        skills: p.skills
+        skills: JSON.parse(JSON.stringify(p.skills))
     };
     
     const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
@@ -1081,14 +1115,19 @@ function loadCharacter(id) {
     const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
     const char = library.find(c => c.id === id);
     if(!char) return;
-    
-    const p1 = state.players[1];
-    p1.name = char.name;
-    p1.photo = char.photo;
-    p1.archetype = char.archetype;
-    p1.skills = JSON.parse(JSON.stringify(char.skills)); // Deep copy
-    
-    renderPlayerToCreator(1);
+
+    const localPid = getLocalCreatorPlayerId();
+    const target = state.players[localPid];
+    target.name = char.name;
+    target.photo = char.photo;
+    target.archetype = char.archetype;
+    target.skills = JSON.parse(JSON.stringify(char.skills)); // Deep copy
+
+    renderPlayerToCreator(localPid);
+    checkValidation();
+    if ((state.mode === 'host' && localPid === 1) || (state.mode === 'guest' && localPid === 2)) {
+        syncLocalProfile();
+    }
     document.getElementById('barracks-modal').classList.add('hidden');
 }
 
@@ -1160,6 +1199,7 @@ function hostGame() {
     if (!passAccessGate()) return; // Double check
     initPeer().then(peer => {
         state.mode = 'host';
+        updateSaveButtons();
         document.getElementById('host-game-btn').classList.add('hidden');
         document.getElementById('host-link-area').classList.remove('hidden');
         document.getElementById('host-link-input').value = buildInviteLink(peer.id);
@@ -1181,6 +1221,7 @@ function joinGame(hostId) {
     if (!passAccessGate()) return; // Double check
     initPeer().then(peer => {
         state.mode = 'guest';
+        updateSaveButtons();
         const cleanHostId = normalizeHostId(hostId);
         if (!cleanHostId) {
             setStatus("Invalid invite or room ID.", "warn");
@@ -1268,6 +1309,8 @@ function setupConnection(conn) {
         state.conn = null;
         state.battleActive = false;
         state.guestProfileInitialized = false;
+        state.mode = null;
+        updateSaveButtons();
         setStatus("Connection closed. Re-open Online and reconnect.", "warn");
         checkValidation();
     });
@@ -1306,6 +1349,16 @@ function handleData(data) {
             setStatus("Guest profile synced. Ready when both builds are valid.", "ok");
             checkValidation();
         }
+
+    } else if (type === 'PROFILE_SYNC') {
+        if (state.mode === 'guest') {
+            state.players[1] = JSON.parse(JSON.stringify(payload.char));
+            renderPlayerToCreator(1);
+        } else if (state.mode === 'host') {
+            state.players[2] = JSON.parse(JSON.stringify(payload.char));
+            renderPlayerToCreator(2);
+        }
+        checkValidation();
         
     } else if (type === 'SYNC_STATS') {
         // Guest receives rolled stats

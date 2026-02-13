@@ -107,7 +107,8 @@
         >
           ✕
         </button>
-        <h2 class="text-2xl font-bold mb-4 text-cyan-400">HERO BARRACKS</h2>
+        <h2 class="text-2xl font-bold mb-2 text-cyan-400">HERO BARRACKS</h2>
+        <p class="text-xs text-slate-400 mb-4">Load-only: click any hero card to load it into your active player slot.</p>
         <div
           id="barracks-list"
           class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto mb-4"
@@ -116,17 +117,6 @@
           <p class="text-slate-500 italic col-span-2 text-center">
             No heroes saved yet.
           </p>
-        </div>
-        <div
-          class="border-t border-slate-700 pt-4 flex justify-between items-center text-sm text-slate-400"
-        >
-          <span>Save current Player 1 to Barracks?</span>
-          <button
-            id="save-p1-btn"
-            class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold"
-          >
-            Save P1
-          </button>
         </div>
       </div>
     </div>
@@ -240,8 +230,11 @@
                 <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-blue-500"></div>
                 <div class="flex justify-between items-start mb-4">
                     <h3 id="p1-title" class="text-2xl font-black text-cyan-400">PLAYER 1 (HOST)</h3>
+                  <div class="flex items-center gap-2">
+                    <button id="p1-save-btn" class="text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1 rounded-lg transition-colors">Save Hero</button>
                     <div id="p1-status" class="px-3 py-1 bg-cyan-900/30 text-cyan-400 text-xs font-bold rounded-full border border-cyan-500/30">
-                        YOU
+                      YOU
+                    </div>
                     </div>
                 </div>
 
@@ -340,8 +333,11 @@
                 <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-pink-500"></div>
                  <div class="flex justify-between items-start mb-4">
                     <h3 id="p2-title" class="text-2xl font-black text-purple-400">PLAYER 2 (OPPONENT)</h3>
+                  <div class="flex items-center gap-2">
+                    <button id="p2-save-btn" class="hidden text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1 rounded-lg transition-colors">Save Hero</button>
                     <div id="p2-status" class="px-3 py-1 bg-purple-900/30 text-purple-400 text-xs font-bold rounded-full border border-purple-500/30">
-                        WAITING
+                      WAITING
+                    </div>
                     </div>
                 </div>
 
