@@ -78,6 +78,18 @@ function clamp(val, min, max) {
     return Math.min(Math.max(val, min), max);
 }
 
+function setPortraitImage(el, src) {
+    if (!el) return;
+    const hasImage = Boolean(src);
+    if (hasImage) {
+        el.src = src;
+        el.classList.remove('portrait-empty');
+    } else {
+        el.removeAttribute('src');
+        el.classList.add('portrait-empty');
+    }
+}
+
 function setStatus(msg, kind = "info") {
     const el = document.getElementById("validation-msg");
     if (!el) return;
@@ -394,7 +406,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const hostId = urlParams.get("join");
     if (hostId) {
       document.getElementById("join-id-input").value = hostId;
-            setStatus("Invite link detected. Open Room 1v1 and click Join when ready.", "warn");
+            document.getElementById("online-modal").classList.remove("hidden");
+            setStatus("Invite link detected. Click Join to enter the room.", "warn");
     }
   }
 
@@ -564,13 +577,7 @@ function renderPlayerToCreator(pid) {
   // If photo is uploaded, show it. If not, show blank or default? 
   // Design says separate photo upload. So p1-preview checks p.photo.
   const preview = document.getElementById(`p${pid}-preview`);
-  if (p.photo) {
-      preview.src = p.photo;
-  } else {
-      // If no photo, maybe show archetype image or a placeholder?
-      // Let's show archetype image if available, else placeholder.
-      preview.src = activeArch ? activeArch.image : "https://via.placeholder.com/150";
-  }
+  setPortraitImage(preview, p.photo);
 
   for (let i = 0; i < 3; i++) {
     document.getElementById(`p${pid}-s${i + 1}-name`).value = p.skills[i].name || "";
@@ -647,7 +654,7 @@ async function startBattle() {
     // Setup Arena UI
     for(let i=1; i<=2; i++) {
         document.getElementById(`p${i}-arena-name`).textContent = state.players[i].name;
-        document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || ARCHETYPES[state.players[i].archetype].image;
+        setPortraitImage(document.getElementById(`p${i}-arena-img`), state.players[i].photo);
     }
 
     if (state.mode === 'host') {
@@ -796,10 +803,10 @@ function updateTurnUI() {
       bgClass =
         "bg-blue-900/50 hover:bg-blue-700/50 border border-blue-500/30 text-blue-100";
 
-    btn.className = `${bgClass} py-3 px-2 rounded-lg font-bold transition-all text-sm flex flex-col items-center gap-1`;
+        btn.className = `${bgClass} skill-action-btn py-3 px-2 rounded-lg font-bold transition-all text-sm flex flex-col items-center gap-1`;
     btn.innerHTML = `
-            <span class="text-xs opacity-70 tracking-wider uppercase">${skill.type}</span>
-            <span class="text-base">${skill.name || "Unnamed Skill"}</span>
+            <span class="text-lg md:text-xl font-black tracking-wide skill-name-glow">${skill.name || "Unnamed Skill"}</span>
+            <span class="text-xs opacity-80 tracking-[0.2em] uppercase">${skill.type}</span>
             <span class="text-xs bg-black/30 px-2 rounded-full">${skill.points} pts</span>
         `;
 
@@ -852,10 +859,13 @@ async function executeMove(skill, fromNetwork = false) {
   await new Promise((r) => setTimeout(r, 600));
 
   // Accuracy Check
-  let accuracy = 100;
-  if (skill.type === "chaos") accuracy = 70;
-  if (skill.type === "stun") accuracy = 85;
-  if (skill.type === "vampire") accuracy = 95;
+    let accuracy = 100;
+    if (skill.type === "chaos") accuracy = 68;
+    if (skill.type === "stun") accuracy = 82;
+    if (skill.type === "vampire") accuracy = 90;
+
+    const luckShift = gaussianRandom(0, 18);
+    accuracy = clamp(Math.floor(accuracy + luckShift), 35, 99);
 
   if (Math.random() * 100 > accuracy) {
     log(`...but it MISSED!`);
@@ -866,14 +876,17 @@ async function executeMove(skill, fromNetwork = false) {
   // Damage Calculation
   let damage = 0;
   let isCrit = false; // For screen shake
+  const fortune = clamp(gaussianRandom(1, 0.55), 0.2, 2.4);
 
   if (skill.type === "chaos") {
-    const mult = gaussianRandom(1.5, 1.2);
-    damage = Math.floor(skill.points * mult);
-    if (damage > skill.points * 2.5) isCrit = true;
+    const mult = clamp(gaussianRandom(1.8, 1.7), 0.15, 5.5);
+    damage = Math.floor(skill.points * mult * fortune);
+    if (damage > skill.points * 2.8 || Math.random() < 0.2) isCrit = true;
   } else if (skill.type === "vampire") {
-    damage = Math.floor(skill.points * 0.6);
-        const heal = Math.floor(damage * 0.5); // increased heal for visibility
+    const mult = clamp(gaussianRandom(0.75, 0.55), 0.1, 2.2);
+    damage = Math.floor(skill.points * mult * fortune);
+        const healRatio = clamp(gaussianRandom(0.55, 0.22), 0.2, 1.0);
+        const heal = Math.floor(damage * healRatio);
         if (heal > 0) {
             attacker.stats.hp = Math.min(attacker.stats.hp + heal, attacker.stats.maxHp);
             createFloatingText(attackerId, `+${heal}`, 'heal-float');
@@ -882,8 +895,10 @@ async function executeMove(skill, fromNetwork = false) {
             createParticles(attackerId, 'heal');
         }
     } else if (skill.type === 'stun') {
-        damage = Math.floor(skill.points * 0.4); // slightly buffed dmg
-        if (Math.random() < 0.45) { // 45% chance
+        const mult = clamp(gaussianRandom(0.55, 0.45), 0.05, 2.2);
+        damage = Math.floor(skill.points * mult * fortune);
+        const freezeChance = clamp(0.35 + gaussianRandom(0.15, 0.18), 0.12, 0.85);
+        if (Math.random() < freezeChance) {
             defender.frozen = true;
             document.getElementById(`p${defenderId}-freeze-overlay`).classList.remove('hidden');
             log(`❄️ ${defender.name} is FROZEN!`);
@@ -892,6 +907,12 @@ async function executeMove(skill, fromNetwork = false) {
     }
 
     if (damage < 0) damage = 0;
+
+    if (fortune > 1.7) {
+        log(`⚡ LUCK SURGE boosts ${attacker.name}'s strike!`);
+    } else if (fortune < 0.45) {
+        log(`🌫️ ${attacker.name}'s strike loses momentum...`);
+    }
     
     // Apply Damage
     defender.stats.hp -= damage;
@@ -1165,11 +1186,13 @@ function renderBarracks() {
     }
     
     library.forEach(char => {
+        const photoSrc = char.photo || '';
+        const emptyClass = char.photo ? '' : ' portrait-empty';
         const card = document.createElement('div');
         card.className = "bg-slate-900 p-3 rounded-xl border border-slate-700 flex gap-3 items-center hover:border-cyan-500 transition-colors cursor-pointer group";
         
         card.innerHTML = `
-            <img src="${char.photo || 'https://via.placeholder.com/50'}" class="w-12 h-12 rounded-full object-cover border border-slate-600">
+            <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover border border-slate-600${emptyClass}">
             <div class="flex-grow">
                 <h4 class="font-bold text-white text-sm">${char.name}</h4>
                 <div class="text-xs text-slate-400">${char.archetype}</div>
@@ -1400,7 +1423,7 @@ function handleData(data) {
         // Setup Arena UI
         for(let i=1; i<=2; i++) {
             document.getElementById(`p${i}-arena-name`).textContent = state.players[i].name;
-            document.getElementById(`p${i}-arena-img`).src = state.players[i].photo || ARCHETYPES[state.players[i].archetype].image;
+            setPortraitImage(document.getElementById(`p${i}-arena-img`), state.players[i].photo);
         }
         
         rollStatsAnimation(); // Visuals only for guest

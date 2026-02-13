@@ -337,3 +337,15 @@ body {
     pointer-events: none;
     filter: grayscale(100%);
 }
+
+.portrait-empty {
+  opacity: 0;
+}
+
+.skill-action-btn {
+  border-width: 1px;
+}
+
+.skill-name-glow {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.35), 0 0 18px rgba(34, 211, 238, 0.2);
+}
