@@ -160,15 +160,7 @@ function buildInviteLink(hostId) {
     return url.toString();
 }
 
-function lockOpponentCreatorSlot() {
-    const card = document.getElementById("p2-creator-card");
-    if (!card) return;
-    const controls = card.querySelectorAll("input, select, button");
-    controls.forEach((el) => {
-        el.disabled = true;
-        el.classList.add("opacity-60", "cursor-not-allowed");
-    });
-}
+// function lockOpponentCreatorSlot() legacy implementation removed
 
 /* --- Math Challenge Logic --- */
 
@@ -331,7 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initAccessGate(); // Initialize blocking overlay
   setupCreatorUI(1);
   setupCreatorUI(2);
-  lockOpponentCreatorSlot();
+  toggleCardLock(2, true);
   checkValidation();
     
   // Barracks & Online UI
@@ -379,20 +371,52 @@ document.addEventListener("DOMContentLoaded", () => {
   setStatus("Online only: host or join a room to enable battle.", "warn");
 });
 
+
+// Helper to lock/unlock a player card
+function toggleCardLock(pid, isLocked) {
+    const card = document.getElementById(pid === 1 ? 'p1-column' : 'p2-column');
+    const status = document.getElementById(pid === 1 ? 'p1-status' : 'p2-status');
+    const title = document.getElementById(pid === 1 ? 'p1-title' : 'p2-title');
+    
+    if (isLocked) {
+        card.classList.add('opacity-60', 'pointer-events-none');
+        card.classList.remove('opacity-100');
+        status.textContent = pid === 1 ? "HOST" : "OPPONENT";
+        status.className = "px-3 py-1 bg-slate-700 text-slate-400 text-xs font-bold rounded-full border border-slate-600";
+    } else {
+        card.classList.remove('opacity-60', 'pointer-events-none');
+        card.classList.add('opacity-100');
+        status.textContent = "YOU";
+        status.className = pid === 1 
+            ? "px-3 py-1 bg-cyan-900/30 text-cyan-400 text-xs font-bold rounded-full border border-cyan-500/30"
+            : "px-3 py-1 bg-purple-900/30 text-purple-400 text-xs font-bold rounded-full border border-purple-500/30";
+    }
+}
+
 function setupCreatorUI(pid) {
   // Archetype Selection
   document.querySelectorAll(`.p${pid}-arch`).forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      // UI Update
+      // UI Update: Remove active class from all, add to clicked
+      // Note: btn is the .archetype-card container now
       document
         .querySelectorAll(`.p${pid}-arch`)
-        .forEach((b) =>
-          b.classList.remove("active-arch", "bg-cyan-600", "text-white"),
-        );
-      e.target.classList.add("active-arch", "bg-cyan-600", "text-white");
+        .forEach((b) => {
+           b.classList.remove("border-cyan-500", "border-purple-500", "ring-2", "ring-white");
+           b.classList.add("border-slate-700");
+           b.querySelector("img").classList.remove("opacity-100");
+           b.querySelector("img").classList.add("opacity-60");
+        });
+      
+      const target = e.currentTarget; // The div with data-player
+      const colorClass = pid === 1 ? "border-cyan-500" : "border-purple-500";
+      target.classList.remove("border-slate-700");
+      target.classList.add(colorClass, "ring-2", "ring-white");
+      target.querySelector("img").classList.remove("opacity-60");
+      target.querySelector("img").classList.add("opacity-100");
 
       // State Update
-      state.players[pid].archetype = e.target.dataset.type;
+      state.players[pid].archetype = target.dataset.type;
 
       // Update UI immediately via render
       renderPlayerToCreator(pid);
@@ -402,9 +426,7 @@ function setupCreatorUI(pid) {
 
   // Photo Upload
   const fileInput = document.getElementById(`p${pid}-upload`);
-  const preview = document.getElementById(`p${pid}-preview`);
-  const text = document.getElementById(`p${pid}-upload-text`);
-
+  
   fileInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -450,9 +472,6 @@ function updatePlayerState(pid) {
     const sPoints =
       parseInt(document.getElementById(`p${pid}-s${i + 1}-points`).value) || 0;
 
-    // UI Value Update
-    document.getElementById(`p${pid}-s${i + 1}-val`).textContent = sPoints;
-
     p.skills[i] = { name: sName, type: sType, points: sPoints };
     totalPoints += sPoints;
   }
@@ -460,47 +479,57 @@ function updatePlayerState(pid) {
   // Update Remaining Points UI
   const pointsRem = 100 - totalPoints;
   const pointsSpan = document.getElementById(`p${pid}-points`);
-  pointsSpan.textContent = `${pointsRem} remaining`;
+  pointsSpan.textContent = `${pointsRem} PTS`;
 
-  if (pointsRem < 0) pointsSpan.className = "text-red-500 font-bold";
-  else if (pointsRem === 0) pointsSpan.className = "text-emerald-400 font-bold";
-  else pointsSpan.className = "text-yellow-400";
+  if (pointsRem < 0) pointsSpan.className = "text-xs font-mono font-bold text-red-500";
+  else if (pointsRem === 0) pointsSpan.className = "text-xs font-mono font-bold text-emerald-400";
+  else pointsSpan.className = "text-xs font-mono font-bold text-yellow-400";
 }
 
 function renderPlayerToCreator(pid) {
   const p = state.players[pid];
   document.getElementById(`p${pid}-name`).value = p.name || "";
+  
   const activeArch = ARCHETYPES[p.archetype];
   const desc = document.querySelector(`.p${pid}-arch-desc`);
   if (activeArch) {
       desc.textContent = activeArch.description;
   }
 
-  // Show photo if uploaded, otherwise show default archetype image
-  const imgUrl = p.photo || activeArch.image;
+  // Highlight selected archetype card
+  document.querySelectorAll(`.p${pid}-arch`).forEach((b) => {
+       const isSelected = b.dataset.type === p.archetype;
+       const colorClass = pid === 1 ? "border-cyan-500" : "border-purple-500";
+       
+       if (isSelected) {
+           b.classList.remove("border-slate-700");
+           b.classList.add(colorClass, "ring-2", "ring-white");
+           b.querySelector("img").classList.remove("opacity-60");
+           b.querySelector("img").classList.add("opacity-100");
+       } else {
+           b.classList.remove(colorClass, "ring-2", "ring-white");
+           b.classList.add("border-slate-700");
+           b.querySelector("img").classList.remove("opacity-100");
+           b.querySelector("img").classList.add("opacity-60");
+       }
+  });
+
+  // Photo Preview
+  // If photo is uploaded, show it. If not, show blank or default? 
+  // Design says separate photo upload. So p1-preview checks p.photo.
   const preview = document.getElementById(`p${pid}-preview`);
-  const text = document.getElementById(`p${pid}-upload-text`);
-  
-  preview.src = imgUrl;
-  preview.classList.remove("hidden");
-  
-  // If custom photo, hide text. If default, show text "Upload Photo" overlaying it slightly or just hide text? 
-  // Let's keep text hidden if any image is shown to keep it clean, or show icon.
-  // Actually, we want to allow uploading.
   if (p.photo) {
-      text.textContent = "Change Photo";
-      text.classList.add("bg-slate-900/50", "rounded", "px-1");
+      preview.src = p.photo;
   } else {
-      text.textContent = "Upload Photo";
-      text.classList.add("bg-slate-900/50", "rounded", "px-1");
+      // If no photo, maybe show archetype image or a placeholder?
+      // Let's show archetype image if available, else placeholder.
+      preview.src = activeArch ? activeArch.image : "https://via.placeholder.com/150";
   }
-  text.classList.remove("hidden");
 
   for (let i = 0; i < 3; i++) {
     document.getElementById(`p${pid}-s${i + 1}-name`).value = p.skills[i].name || "";
     document.getElementById(`p${pid}-s${i + 1}-type`).value = p.skills[i].type || "chaos";
     document.getElementById(`p${pid}-s${i + 1}-points`).value = p.skills[i].points || 0;
-    document.getElementById(`p${pid}-s${i + 1}-val`).textContent = p.skills[i].points || 0;
   }
   updatePlayerState(pid);
 }
@@ -1175,18 +1204,29 @@ function setupConnection(conn) {
         
         // Handshake
         // Host is P1, Guest is P2.
-        // If I am Host, I don't send P1 yet, I wait for Guest P2.
-        // Actually simpler: Just exchange current user's player data.
         
-        // Since Creator UI treats us as interacting with P1 or P2 slots...
-        // In Online: You are ALWAYS "Player 1" in your local Creator UI.
-        // When you Host, you stay P1. 
-        // When you Join, you become P2 relative to the Host.
-        
-        // Normalize guest local slots once before first profile sync.
-        if (state.mode === 'guest' && !state.guestProfileInitialized) {
-            state.players[2] = JSON.parse(JSON.stringify(state.players[1]));
-            state.guestProfileInitialized = true;
+        // Guest Initialization Logic
+        if (state.mode === 'guest') {
+            if (!state.guestProfileInitialized) {
+                // MOVE local P1 data to P2 slot
+                state.players[2] = JSON.parse(JSON.stringify(state.players[1]));
+                // Reset P1 to empty/host placeholder? Actually we wait for handshake.
+                state.guestProfileInitialized = true;
+            }
+            
+            // UI Update for Guest
+            renderPlayerToCreator(2); // Show my data in P2 slot
+            
+            // LOCK P1 (Host), UNLOCK P2 (Me)
+            toggleCardLock(1, true);
+            toggleCardLock(2, false);
+            
+            setStatus("Connected to Host. You are Player 2.", "ok");
+        } else {
+            // Host Initialization Logic
+            // LOCK P2 (Guest), UNLOCK P1 (Me)
+            toggleCardLock(1, false);
+            toggleCardLock(2, true);
         }
 
         const myChar = state.mode === 'guest' ? state.players[2] : state.players[1]; 
@@ -1194,7 +1234,6 @@ function setupConnection(conn) {
         sendData('HANDSHAKE', { char: myChar });
         
         document.getElementById('online-modal').classList.add('hidden');
-        setStatus("Connected. Verify both builds and start battle.", "ok");
         checkValidation();
     });
 
