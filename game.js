@@ -91,6 +91,12 @@ function isOnlineReady() {
     return Boolean(state.mode && state.conn && state.conn.open);
 }
 
+function getRequiredValidationPlayers() {
+    if (state.mode === 'guest') return [2];
+    if (state.mode === 'host') return [1, 2];
+    return [1];
+}
+
 // Access Gate Logic
 function initAccessGate() {
     const gate = document.getElementById('access-gate');
@@ -323,6 +329,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initAccessGate(); // Initialize blocking overlay
   setupCreatorUI(1);
   setupCreatorUI(2);
+    renderPlayerToCreator(1);
+    renderPlayerToCreator(2);
   toggleCardLock(2, true);
   checkValidation();
     
@@ -469,8 +477,10 @@ function updatePlayerState(pid) {
   for (let i = 0; i < 3; i++) {
     const sName = document.getElementById(`p${pid}-s${i + 1}-name`).value;
     const sType = document.getElementById(`p${pid}-s${i + 1}-type`).value;
-    const sPoints =
-      parseInt(document.getElementById(`p${pid}-s${i + 1}-points`).value) || 0;
+        const pointsInput = document.getElementById(`p${pid}-s${i + 1}-points`);
+        const rawPoints = parseInt(pointsInput.value);
+        const sPoints = clamp(Number.isFinite(rawPoints) ? rawPoints : 0, 0, 100);
+        pointsInput.value = sPoints;
 
     p.skills[i] = { name: sName, type: sType, points: sPoints };
     totalPoints += sPoints;
@@ -493,7 +503,11 @@ function renderPlayerToCreator(pid) {
   const activeArch = ARCHETYPES[p.archetype];
   const desc = document.querySelector(`.p${pid}-arch-desc`);
   if (activeArch) {
-      desc.textContent = activeArch.description;
+      const hpMin = Math.max(10, Math.floor(activeArch.hpMean - activeArch.hpSigma));
+      const hpMax = Math.floor(activeArch.hpMean + activeArch.hpSigma);
+      const speedMin = Math.max(5, Math.floor(activeArch.speedMean - activeArch.speedSigma));
+      const speedMax = Math.floor(activeArch.speedMean + activeArch.speedSigma);
+      desc.innerHTML = `${activeArch.description}<br><span class="text-slate-300 not-italic font-semibold">Expected HP:</span> ${hpMin}-${hpMax} · <span class="text-slate-300 not-italic font-semibold">Expected SPD:</span> ${speedMin}-${speedMax}`;
   }
 
   // Highlight selected archetype card
@@ -538,7 +552,9 @@ function checkValidation() {
   let valid = true;
   let msg = "";
 
-  [1, 2].forEach((pid) => {
+    const requiredPlayers = getRequiredValidationPlayers();
+
+    requiredPlayers.forEach((pid) => {
     const p = state.players[pid];
     let pts = 0;
     p.skills.forEach((s) => (pts += s.points));
@@ -559,6 +575,9 @@ function checkValidation() {
   } else if (valid && !isOnlineReady()) {
     valid = false;
     msg = "Waiting for online connection...";
+    } else if (valid && state.mode === 'guest') {
+        valid = false;
+        msg = "Connected as Player 2. Waiting for host to start.";
   }
 
   if (valid) {
@@ -577,6 +596,11 @@ function checkValidation() {
 /* --- Battle Logic --- */
 
 async function startBattle() {
+    if (state.mode === 'guest') {
+        setStatus("Only the host can start the battle.", "warn");
+        return;
+    }
+
   if (!isOnlineReady()) {
     setStatus("Connect online first (Host or Join) before starting.", "warn");
     document.getElementById('online-modal').classList.remove('hidden');
@@ -864,14 +888,12 @@ async function executeMove(skill, fromNetwork = false) {
     log(`CRITICAL HIT! Massize variance spike!`);
   }
 
-    if (!fromNetwork) {
-        // Sync State after move (Host only)
-        if (state.mode === 'host') {
-            sendData('SYNC_STATE', { 
-                players: state.players,
-                logs: [] // Logs handled separately in real-time
-            });
-        }
+    // Sync State after move (Host only)
+    if (state.mode === 'host') {
+        sendData('SYNC_STATE', { 
+            players: state.players,
+            logs: [] // Logs handled separately in real-time
+        });
     }
 
     if (defender.stats.hp <= 0) {
@@ -1274,6 +1296,7 @@ function handleData(data) {
             document.getElementById('start-battle-btn').disabled = true;
             document.getElementById('start-battle-btn').textContent = "WAITING FOR HOST...";
             setStatus("Connected to host. Waiting for host to start.", "ok");
+            checkValidation();
             
         } else {
             // I am Host. My char is P1. Guest char (payload) goes to P2.
@@ -1328,9 +1351,15 @@ function handleData(data) {
         updateHpBars();
         // Also ensure UI reflects frozen state etc?
     } else if (type === 'MATH_START') {
+        state.mathChallenge.active = true;
+        state.mathChallenge.answered = false;
+        state.battleActive = false;
         state.mathChallenge.correctAnswer = payload.a;
         renderMathModal(payload);
     } else if (type === 'MATH_SOLVED') {
+        if (state.mode === 'host') {
+            sendData('MATH_SOLVED', payload);
+        }
         resolveMathPhase(payload.winner);
     }
 }
