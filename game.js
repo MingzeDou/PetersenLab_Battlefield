@@ -365,11 +365,11 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   
   document.getElementById('p1-save-btn').addEventListener("click", () => {
-      saveCharacter(1);
+      saveCharacter(getLocalCreatorPlayerId());
       renderBarracks();
   });
   document.getElementById('p2-save-btn').addEventListener("click", () => {
-      saveCharacter(2);
+      saveCharacter(getLocalCreatorPlayerId());
       renderBarracks();
   });
 
@@ -394,8 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const hostId = urlParams.get("join");
     if (hostId) {
       document.getElementById("join-id-input").value = hostId;
-      document.getElementById("online-modal").classList.remove("hidden");
-      setStatus("Invite link detected. Click Join to connect.", "warn");
+            setStatus("Invite link detected. Open Room 1v1 and click Join when ready.", "warn");
     }
   }
 
@@ -403,8 +402,7 @@ document.addEventListener("DOMContentLoaded", () => {
     .getElementById("start-battle-btn")
     .addEventListener("click", startBattle);
   document.getElementById('share-btn').addEventListener('click', shareBuild);
-  document.getElementById('online-modal').classList.remove('hidden');
-  setStatus("Online only: host or join a room to enable battle.", "warn");
+    setStatus("Choose Room 1v1 when you’re ready to host or join.", "warn");
 });
 
 
@@ -1091,8 +1089,11 @@ function loadSharedBuild() {
 /* --- Barracks (Local Storage) --- */
 
 function saveCharacter(pid) {
+    if (pid !== 1 && pid !== 2) return;
+
+    updatePlayerState(pid);
     const p = state.players[pid];
-    if(!p.name) {
+    if(!p.name || !p.name.trim()) {
         setStatus("Character needs a name before saving.", "warn");
         return;
     }
@@ -1105,10 +1106,23 @@ function saveCharacter(pid) {
         skills: JSON.parse(JSON.stringify(p.skills))
     };
     
-    const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
-    library.push(charData);
-    localStorage.setItem('gba_library', JSON.stringify(library));
-    setStatus(`${p.name} saved to Barracks.`, "ok");
+    try {
+        const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
+        library.push(charData);
+        localStorage.setItem('gba_library', JSON.stringify(library));
+        setStatus(`${p.name} saved to Barracks.`, "ok");
+    } catch (err) {
+        try {
+            const library = JSON.parse(localStorage.getItem('gba_library') || '[]');
+            const withoutPhoto = { ...charData, photo: null };
+            library.push(withoutPhoto);
+            localStorage.setItem('gba_library', JSON.stringify(library));
+            setStatus(`${p.name} saved without photo (storage limit reached).`, "warn");
+        } catch (fallbackErr) {
+            setStatus("Save failed: browser storage is full or unavailable.", "warn");
+            console.error("Save failed:", err, fallbackErr);
+        }
+    }
 }
 
 function loadCharacter(id) {
